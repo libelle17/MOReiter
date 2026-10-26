@@ -4117,13 +4117,14 @@ EndFunc
 Func PraxisEinrichten()
 	AufrufeLaden()
 	Local $an = PraxisStand()
-	; 21 Zeilen zu 28 Pixeln ab y = 52, darunter die Knoepfe
-	Local $g = GUICreate("MOReiter einrichten", 900, 700), $y = 52
+	; 23 Zeilen zu 28 Pixeln ab y = 52, darunter die Knoepfe
+	Local $g = GUICreate("MOReiter einrichten", 900, 760), $y = 52
 	GUICtrlCreateLabel("Was nutzt die Praxis, und welche Werte gelten hier? MOReiter schreibt das nach " & $IniPraxis & _
 			" (wieder aufzurufen mit ""MOReiter.exe Praxis"").", 15, 12, 870, 36)
 	; Kaestchen (Name -> Control) und Eingabefelder (Name -> Control)
 	Local $k = ObjCreate("Scripting.Dictionary"), $e = ObjCreate("Scripting.Dictionary")
 	$k.Item("Labor") = PraxisKaestchen("Labor: das Labor stellt seine Befunde " & ChrW(252) & "ber onlinebefunde.labor-staber.de bereit (Strg+O)", 0, $y, $an.Item("Labor"))
+	$e.Item("KennungLabor") = PraxisFeld("Benutzerkennung onlinebefunde (leer: wie im Firefox gespeichert)", 20, $y, Einst("Labor", "Kennung", ""))
 	$k.Item("Ablage") = PraxisKaestchen("heruntergeladene PDFs (Laborbefunde, Zuckerberichte) des Patienten in einen Ordner verschieben und umbenennen", 20, $y, $an.Item("Ablage"))
 	$e.Item("Ablage") = PraxisFeld("Ablageordner", 40, $y, PraxisAblage())
 	$k.Item("Einordnen") = PraxisKaestchen("dort weitergehend einordnen:", 40, $y, $an.Item("Einordnen"))
@@ -4140,8 +4141,13 @@ Func PraxisEinrichten()
 			Einst("Labor", "AddOn", ""))
 	$k.Item("Zucker") = PraxisKaestchen("Zuckerwerte aus LibreView, Dexcom Clarity, Glooko, YourLoops bzw. EasyView herunterladen (Strg+L, D, G, Y, E, Z)", 0, $y, $an.Item("Zucker"))
 	Local $portale[5] = ["LibreView", "Dexcom", "Glooko", "YourLoops", "EasyView"]
+	; die Kennwoerter kommen aus Firefox, MOReiter speichert keine
+	GUICtrlCreateLabel("Kennw" & ChrW(246) & "rter (auch f" & ChrW(252) & "rs Labor) bitte im Kennwortspeicher von Firefox hinterlegen: einmal von Hand " & _
+			"anmelden und speichern lassen. MOReiter speichert keine.", 35, $y + 3, 850, 22)
+	$y += 28
 	For $s In $portale
-		$e.Item("Kennung" & $s) = PraxisFeld("Benutzerkennung " & $s & " (leer: die erste im Firefox gespeicherte)", 20, $y, Einst($s, "Kennung", ""))
+		$e.Item("Kennung" & $s) = PraxisFeld("Benutzerkennung " & $s & (($s = "LibreView") ? " (n" & ChrW(246) & "tig f" & ChrW(252) & "r die automatische Anmeldung)" : _
+				" (leer: die erste im Firefox gespeicherte)"), 20, $y, Einst($s, "Kennung", ""))
 	Next
 	$e.Item("SpeichernAuf") = PraxisFeld("Dexcom: PCs, die den Bericht als PDF speichern (durch Komma getrennt)", 20, $y, Einst("Dexcom", "SpeichernAuf", ""))
 	$k.Item("SmartPix") = PraxisKaestchen("Accu-Chek Smart Pix (Strg+S Patient w" & ChrW(228) & "hlen, Strg+Umsch+S Patientenliste abgleichen)", 0, $y, $an.Item("SmartPix"))
@@ -4212,8 +4218,9 @@ Func PraxisGrau($k, $e)
 	PraxisAktiv($e.Item("AddOn"), $portal)
 	Local $zucker = PraxisAn($k.Item("Zucker"))
 	For $n In $e.Keys
-		If StringLeft($n, 7) = "Kennung" Or $n = "SpeichernAuf" Then PraxisAktiv($e.Item($n), $zucker)
+		If (StringLeft($n, 7) = "Kennung" And $n <> "KennungLabor") Or $n = "SpeichernAuf" Then PraxisAktiv($e.Item($n), $zucker)
 	Next
+	PraxisAktiv($e.Item("KennungLabor"), PraxisAn($k.Item("Labor")))
 EndFunc
 
 Func PraxisAktiv($c, $an)
@@ -4287,6 +4294,11 @@ Func PraxisSchreiben($an, $w)
 	If $an.Item("Ablage") And $w.Item("Ablage") = "" Then Return PraxisFehlt("Bitte den Ablageordner angeben.")
 	If $an.Item("Sicherung") And $w.Item("Eingelesen") = "" Then Return PraxisFehlt("Bitte den Ordner der Sicherheitskopien angeben.")
 	If $an.Item("Patientenordner") And $w.Item("Dok") = "" Then Return PraxisFehlt("Bitte den Ordner der Patientendokumente angeben.")
+	; vorher pruefen, ob sich die Praxis-INI schreiben laesst (IniWrite scheitert sonst unbemerkt, z.B. ohne Rechte
+	; auf dem Netzlaufwerk)
+	Local $fh = FileOpen($IniPraxis, 1)
+	If $fh = -1 Then Return PraxisNichtBeschreibbar()
+	FileClose($fh)
 	If $an.Item("PdfText") Then
 		If $w.Item("PdfText") = "" Then Return PraxisFehlt("Bitte den Pfad f" & ChrW(252) & "r pdftotext.exe angeben.")
 		If Not FileExists($w.Item("PdfText")) And Not PdfTextHolen($w.Item("PdfText")) Then Return False
@@ -4327,7 +4339,7 @@ Func PraxisSchreiben($an, $w)
 		EndIf
 		; ein Ablageordner fuer alle Portale
 		PraxisWert($s, "Ablage", $an.Item("Ablage") ? $w.Item("Ablage") : "")
-		If $s <> "Labor" Then PraxisWert($s, "Kennung", $w.Item("Kennung" & $s))
+		If Not PraxisWert($s, "Kennung", $w.Item("Kennung" & $s)) Then Return PraxisNichtBeschreibbar()
 	Next
 	IniWrite($IniPraxis, "Dokumente", "Einordnen", ($an.Item("Ablage") And $an.Item("Einordnen") And _
 			($an.Item("Sicherung") Or $an.Item("Patientenordner"))) ? "1" : "0")
@@ -4344,10 +4356,17 @@ Func PraxisSchreiben($an, $w)
 	Return True
 EndFunc
 
-; Wert in die Praxis-INI schreiben, ein leerer entfernt ihn (dann gelten die Vorgaben)
+; Wert in die Praxis-INI schreiben, ein leerer entfernt ihn (dann gelten die Vorgaben); False, wenn das nicht ging
 Func PraxisWert($s, $k, $v)
-	If $v = "" Then Return IniDelete($IniPraxis, $s, $k)
-	Return IniWrite($IniPraxis, $s, $k, $v)
+	If $v = "" Then
+		IniDelete($IniPraxis, $s, $k)
+		Return IniRead($IniPraxis, $s, $k, Chr(1)) = Chr(1)
+	EndIf
+	Return IniWrite($IniPraxis, $s, $k, $v) = 1
+EndFunc
+
+Func PraxisNichtBeschreibbar()
+	Return PraxisFehlt($IniPraxis & " l" & ChrW(228) & "sst sich nicht schreiben (Rechte, schreibgesch" & ChrW(252) & "tzt?); nichts gespeichert.")
 EndFunc
 
 Func PraxisFehlt($txt)
