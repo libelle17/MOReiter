@@ -47,9 +47,14 @@ unterstützt. Benutzung auf eigene Verantwortung, ohne Gewährleistung (s. [LICE
    nutzt (Labor, Ablage und Einordnen der PDFs, Zuckerportale, Smart Pix, Patientenlaufzettel), die Pfade und
    Benutzerkennungen eintragen und OK drücken; was von einem Kästchen abhängt, ist grau, solange es aus ist.
    Gespeichert wird in `MOReiter-Praxis.ini`. Später lässt sich alles mit `Einstellungen.bat` ändern.
-5. **Start:** MOReiter startet von `%APPDATA%\MOReiter` aus, erscheint als Symbol im Infobereich der Taskleiste
-   (ggf. unter dem kleinen Pfeil) und trägt sich in den Autostart des Benutzers ein (`[Allgemein] Autostart=0`
-   schaltet das ab). Es läuft immer nur einmal; ein zweiter Start beendet sich still.
+5. **Start:** MOReiter startet von `%APPDATA%\MOReiter` aus und erscheint als Symbol im Infobereich der
+   Taskleiste (ggf. unter dem kleinen Pfeil). Für den Start beim Anmelden legt `Einrichten.bat` eine Verknüpfung
+   im Autostart-Ordner des Benutzers an (abzuschalten im Fenster „MOReiter einrichten“). Es läuft immer nur
+   einmal; ein zweiter Start beendet sich still.
+   **Virenschutz:** Weil MOReiter die Tastatur auf seine Kürzel hin beobachtet, halten manche Virenscanner es
+   für verdächtig und entfernen `MOReiter.exe` stillschweigend (dann läuft es nach `Einrichten.bat` nicht, und
+   Strg+Alt+F1 tut nichts). Dann die Datei aus der Quarantäne zurückholen und für die Ordner von MOReiter
+   (der entpackte Ordner und `%APPDATA%\MOReiter`) eine Ausnahme eintragen.
 6. **Hilfe:** Strg+Alt+F1 zeigt alle Tasten, die auf diesem PC eingerichtet sind.
 
 Auf weiteren PCs der Praxis: den Ordner samt `MOReiter.exe` und `MOReiter-Praxis.ini` kopieren und

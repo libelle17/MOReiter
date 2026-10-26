@@ -1,6 +1,3 @@
-; Tray-Symbol erst fuer die residente Instanz (Aufrufe mit Parametern wie "Praxis" oder Laufzettel-Links zeigen
-; keins, sonst saehe es aus, als liefe MOReiter doppelt)
-#NoTrayIcon
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
 #AutoIt3Wrapper_Icon=MOReiter.ico
 #AutoIt3Wrapper_Outfile=MOReiter.exe
@@ -252,6 +249,10 @@ Global $gBild = 0, $gBildX = 0, $gBildY = 0, $gBildB = 0
 ; Link statt aus Medical Office
 Global $gLink = False, $gLinkNach = "", $gLinkVor = "", $gLinkGeb = "", $gLinkPid = "", $gLinkMark[0]
 
+; Aufrufe mit Parametern ("Praxis", Laufzettel-Links, Filter ...) ohne Tray-Symbol, sonst saehe es aus, als liefe
+; MOReiter doppelt; das residente MOReiter zeigt seins von Anfang an (ein Programm mit Tastatur-Hook, das unsichtbar
+; startet, haelt der Virenschutz eher fuer einen Keylogger)
+If $CmdLine[0] > 0 And $CmdLine[1] <> "Neustart" Then Opt("TrayIconHide", 1)
 If $CmdLine[0] > 0 And $CmdLine[1] = "Neustart" Then
 	; von NeustartPruefen gestartet: warten, bis sich die alte Instanz beendet hat
 	Local $seit = TimerInit()
@@ -275,10 +276,9 @@ ElseIf _Singleton("MOReiter_resident", 1) = 0 Then ; laeuft schon
 	Exit
 EndIf
 
-Opt("TrayIconHide", 0)
 ; Icon aus der Datei daneben laden, falls es beim Kompilieren nicht in die exe gekommen ist
 If FileExists(@ScriptDir & "\MOReiter.ico") Then TraySetIcon(@ScriptDir & "\MOReiter.ico")
-AutostartEintragen()
+AutostartAufraeumen()
 TraySetToolTip("MOReiter " & Stand() & ": Strg+Alt+F1 Hilfe, K Kartei/Wechsel, L Krankenblatt, P ePA/ePAAbr, U Karteikarte, T Termine, D Explorer, Z letzte Patienten, Leertaste Menue, ^..F12 oder Ziffernblock Filter bzw. Diagnose-Kurzwahl")
 ; sonst haelt ein Klick aufs Tray-Symbol das Skript an, und Windows haengt den unbeantworteten Hook ab
 Opt("TrayAutoPause", 0)
@@ -4144,8 +4144,8 @@ Func PraxisEinrichten()
 	If Not FileExists($IniVorgaben) Then Return PraxisFehlt($IniVorgaben & " fehlt und l" & ChrW(228) & "sst sich nicht anlegen. Bitte aus dem Repo " & _
 			"wiederherstellen (https://github.com/libelle17/MOReiter), sonst lassen sich Labor, Zuckerportale, Smart Pix und Laufzettel nicht einschalten.")
 	Local $an = PraxisStand()
-	; 23 Zeilen zu 28 Pixeln ab y = 52, darunter die Knoepfe
-	Local $g = GUICreate("MOReiter einrichten", 900, 760), $y = 52
+	; 24 Zeilen zu 28 Pixeln ab y = 52, darunter die Knoepfe
+	Local $g = GUICreate("MOReiter einrichten", 900, 790), $y = 52
 	GUICtrlCreateLabel("Was nutzt die Praxis, und welche Werte gelten hier? MOReiter schreibt das nach " & $IniPraxis & _
 			" (wieder aufzurufen mit ""MOReiter.exe Praxis"").", 15, 12, 870, 36)
 	; Kaestchen (Name -> Control) und Eingabefelder (Name -> Control)
@@ -4180,6 +4180,8 @@ Func PraxisEinrichten()
 	Next
 	$k.Item("SmartPix") = PraxisKaestchen("Accu-Chek Smart Pix (Strg+S Patient w" & ChrW(228) & "hlen, Strg+Umsch+S Patientenliste abgleichen)", 0, $y, $an.Item("SmartPix"))
 	$k.Item("Laufzettel") = PraxisKaestchen("Patientenlaufzettel, Arztbrief usw. aus Dateilese.exe, FreeCommander " & ChrW(252) & "ber FCAufruf.exe (Strg+P, A, I)", 0, $y, $an.Item("Laufzettel"))
+	$k.Item("Autostart") = PraxisKaestchen("MOReiter beim Anmelden starten (Verkn" & ChrW(252) & "pfung im Autostart-Ordner, legt Einrichten.bat an; " & _
+			"nicht n" & ChrW(246) & "tig, wo es ein Anmeldeskript startet)", 0, $y, $an.Item("Autostart"))
 	Local $ok = GUICtrlCreateButton("OK", 680, $y + 10, 95, 30), $ab = GUICtrlCreateButton("Abbrechen", 790, $y + 10, 95, 30)
 	PraxisGrau($k, $e)
 	GUISetState(@SW_SHOW, $g)
@@ -4277,6 +4279,7 @@ Func PraxisStand()
 	$an.Item("Patientenordner") = (Einst("Dokumente", "Patientenordner", "1") = "1")
 	$an.Item("Ablage") = (PraxisAblage() <> "")
 	$an.Item("PdfText") = (Einst("Allgemein", "PdfText", "") <> "")
+	$an.Item("Autostart") = (Einst("Allgemein", "Autostart", "1") = "1")
 	For $i = 0 To UBound($gAufrufe) - 1
 		Local $gr = PraxisGruppe("Aufrufe", $gAufrufe[$i][0], $gAufrufe[$i][3])
 		If $gr = "Zucker" Or $gr = "SmartPix" Or $gr = "Laufzettel" Then $an.Item($gr) = True
@@ -4371,6 +4374,7 @@ Func PraxisSchreiben($an, $w)
 	Next
 	IniWrite($IniPraxis, "Dokumente", "Einordnen", ($an.Item("Ablage") And $an.Item("Einordnen") And _
 			($an.Item("Sicherung") Or $an.Item("Patientenordner"))) ? "1" : "0")
+	IniWrite($IniPraxis, "Allgemein", "Autostart", $an.Item("Autostart") ? "1" : "0")
 	IniWrite($IniPraxis, "Dokumente", "Sicherung", $an.Item("Sicherung") ? "1" : "0")
 	IniWrite($IniPraxis, "Dokumente", "Datenbank", $an.Item("Datenbank") ? "1" : "0")
 	IniWrite($IniPraxis, "Dokumente", "Patientenordner", $an.Item("Patientenordner") ? "1" : "0")
@@ -5426,15 +5430,13 @@ Func LinkAusfuehren($url)
 	Return Zucker()
 EndFunc
 
-; beim Anmelden starten (HKCU ...\Run), wo es nicht NVerb o.ae. tut; [Allgemein] Autostart=0 schaltet das ab
-Func AutostartEintragen()
-	If Not @Compiled Then Return
-	Local $k = "HKCU\Software\Microsoft\Windows\CurrentVersion\Run", $befehl = '"' & @AutoItExe & '"'
-	If Einst("Allgemein", "Autostart", "1") <> "1" Then
-		RegDelete($k, "MOReiter")
-	ElseIf RegRead($k, "MOReiter") <> $befehl Then
-		RegWrite($k, "MOReiter", "REG_SZ", $befehl)
-	EndIf
+; den Autostart richtet Einrichten.bat ein (Verknuepfung im Autostart-Ordner, [Allgemein] Autostart=0 in der
+; Praxis-INI: keine). Eine Fassung vom 26.10.26 trug sich selbst unter HKCU ...\Run ein; ein Programm, das die
+; Tastatur ueberwacht und sich selbst in den Autostart schreibt, haelt der Virenschutz (Avira) fuer einen Keylogger
+; und entfernt es. Den Eintrag von damals wieder loeschen
+Func AutostartAufraeumen()
+	Local $k = "HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
+	If RegRead($k, "MOReiter") <> "" Then RegDelete($k, "MOReiter")
 EndFunc
 
 ; Linkschema "moreiter:" fuer diesen Benutzer auf diese exe (bzw. dieses Skript) eintragen, ohne Adminrechte

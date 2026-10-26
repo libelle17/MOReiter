@@ -22,9 +22,21 @@ timeout /t 1 /nobreak >nul
 :beendet
 if /i "%~1"=="beenden" goto :eof
 :starten
-if not exist MOReiter.exe goto :eof
+if not exist MOReiter.exe (echo MOReiter.exe fehlt, bitte zuerst Kompilieren.bat aufrufen & pause & goto :eof)
+echo Kopiere MOReiter nach %APPDATA%\MOReiter und starte es dort ...
 if not exist "%APPDATA%\MOReiter" md "%APPDATA%\MOReiter"
 xcopy /d /y /q MOReiter.exe "%APPDATA%\MOReiter\" >nul
 if exist MOReiter-Vorgaben.ini xcopy /d /y /q MOReiter-Vorgaben.ini "%APPDATA%\MOReiter\" >nul
 if exist MOReiter-Praxis.ini xcopy /d /y /q MOReiter-Praxis.ini "%APPDATA%\MOReiter\" >nul
+rem Autostart: Verknuepfung im Autostart-Ordner des Benutzers (nicht mit [Allgemein] Autostart=0 in MOReiter-Praxis.ini,
+rem z.B. wo ein Anmeldeskript MOReiter startet); MOReiter selbst schreibt sich nicht in den Autostart, das haelt der
+rem Virenschutz bei einem Programm, das die Tastatur ueberwacht, fuer einen Keylogger
+set AUTO=1
+if exist MOReiter-Praxis.ini findstr /i /r /c:"^Autostart=0" MOReiter-Praxis.ini >nul && set AUTO=0
+set LNK=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\MOReiter.lnk
+if "%AUTO%"=="0" if exist "%LNK%" del "%LNK%"
+if "%AUTO%"=="1" powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('%LNK%'); $s.TargetPath='%APPDATA%\MOReiter\MOReiter.exe'; $s.WorkingDirectory='%APPDATA%\MOReiter'; $s.Save()"
+if "%AUTO%"=="1" echo Autostart: %LNK%
 start "" /d "%APPDATA%\MOReiter" "%APPDATA%\MOReiter\MOReiter.exe"
+echo MOReiter laeuft (Symbol im Infobereich der Taskleiste, ggf. unter dem kleinen Pfeil; Hilfe: Strg+Alt+F1).
+timeout /t 5 >nul

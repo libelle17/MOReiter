@@ -298,6 +298,8 @@ gilt der eingebaute Wert. Alle drei haben denselben Aufbau; Kalibrieren schreibt
               Einblendung=500    ms Halten bis zu den Schildchen, 0 = nie
               FolgeZeit=2000     ms Pause, nach der eine Ziffernfolge neu beginnt
               PdfText=...        pdftotext.exe: Zeitraum eines abgelegten Berichts aus dem PDF lesen
+              Autostart=0        Einrichten.bat legt keine Verknüpfung im Autostart-Ordner an (z.B. wo ein
+                                 Anmeldeskript MOReiter startet)
               Control, AktivFarbe, Toleranz   Reiterleiste und Farbe des aktiven Reiters
 [Kartei], [Krankenblatt], [ePA], [ePAAbr]   X, Y   Lage der Reiter (schreibt das Kalibrieren)
 [Filter]      Reiter=Kartei      Reiter mit der Filterliste

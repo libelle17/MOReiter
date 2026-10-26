@@ -21,7 +21,10 @@ if not exist "%A2E%" (echo Entpacken fehlgeschlagen, bitte AutoIt3 von www.autoi
 set ERST=
 if not exist MOReiter-Praxis.ini set ERST=1
 call Einrichten.bat beenden
+echo Kompiliere MOReiter.au3 mit %A2E% ...
 "%A2E%" /in MOReiter.au3 /out MOReiter.exe /icon MOReiter.ico /x86
-if errorlevel 1 (echo Kompilieren fehlgeschlagen & pause)
+if errorlevel 1 (echo Kompilieren fehlgeschlagen & pause & goto :eof)
+echo MOReiter.exe ist kompiliert.
+if defined ERST if exist MOReiter.exe echo Erstes Einrichten: Fenster "MOReiter einrichten" ...
 if defined ERST if exist MOReiter.exe start "" /wait MOReiter.exe Praxis
 call Einrichten.bat starten
