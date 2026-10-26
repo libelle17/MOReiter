@@ -9,11 +9,9 @@ Alle Kürzel verwenden die LINKE Alt-Taste zusammen mit Strg. AltGr bleibt unber
 AltGr+2 3 7 8 9 0 ß weiterhin ² ³ { [ ] } \ liefern.
 ~Diese Hilfe zeigt nur, was auf diesem PC eingerichtet ist (Labor, Zuckerportale, Smart Pix,
 Patientenlaufzettel; einzustellen mit Einstellungen.bat bzw. "MOReiter.exe Praxis").
-~Im Hilfefenster: Strg+F sucht, Enter/F3 weiter, Bild auf/ab und Strg+Pos1/Ende blättern, Strg+A markiert
-alles, Strg+C kopiert; mit Alt+Tab kann man daneben ausprobieren, Strg+Alt+F1 holt die Hilfe wieder nach vorn.
 
 
-EINBLENDUNG
+TASTEN-EINBLENDUNG
 ----------------------------------------------------------------------------------------------------
 Strg+Alt eine halbe Sekunde halten: bis zum Loslassen stehen gelbe Schildchen an allen Stellen im
 aktiven Fenster, auf die gerade eine Taste wirken würde (Reiter, Filter mit ihrer Nummer, Pfeil zum
@@ -41,7 +39,7 @@ Strg+Alt+H          in der markierten Zeile der Karteikarte den hellblauen Pfeil
                     (in die ePA hochladen), im folgenden Fenster "Hochladen" drücken und einen danach
                     erscheinenden Leistungsdialog mit "Übernehmen" bestätigen
 Strg+Alt+Esc        MOReiter neu starten, z.B. wenn es in einer Aufgabe hängt und nicht mehr reagiert
-Strg+Alt+F1         diese Hilfe (die Hilfe von Medical Office selbst gibt es weiter mit Strg+F1)
+Strg+Alt+F1         diese Hilfe bzw. holt sie wieder nach vorn (die Hilfe von Medical Office selbst gibt es weiter mit Strg+F1)
 
 
 KRANKENBLATTFILTER (vorgegebenerweise kalibriert für 'Position Filter-Registrierkarten-Reiter links')
