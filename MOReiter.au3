@@ -5779,9 +5779,10 @@ EndFunc
 ; Fliesstext (Zeilen ohne Einzug und ohne doppelte Leerzeichen) und Tasten-Eintraege (Taste in den ersten 20
 ; Zeichen, Beschreibung ab Spalte 21, Fortsetzungszeilen mit 20 Leerzeichen eingerueckt; diese behalten den Einzug);
 ; Ueberschriften (vor ---- bzw. ====), Trennlinien, Tabellen (doppelte Leerzeichen im Text), anders eingerueckte
-; Zeilen und Steuerzeilen ({...}) bleiben, wie sie sind
+; Zeilen und Steuerzeilen ({...}) bleiben, wie sie sind; eine Zeile mit ~ am Anfang beginnt einen neuen Absatz
+; (ohne Leerzeile davor), das ~ faellt weg
 Func HilfeUmbrechen($txt, $n)
-	If $n < 60 Then Return $txt
+	If $n < 60 Then Return StringRegExpReplace($txt, "(?m)^~", "")
 	Local $z = StringSplit($txt, @CRLF, 1 + 2), $erg = "", $i = 0, $anz = UBound($z)
 	Local $einzug = "                    "
 	While $i < $anz
@@ -5789,7 +5790,7 @@ Func HilfeUmbrechen($txt, $n)
 		Local $art = HilfeZeilenart($l, $naechste)
 		If $art = "fliess" Or $art = "taste" Or $art = "fort" Then
 			; Absatz sammeln: Fliesstext mit weiteren Fliesstextzeilen, Tasten-Eintrag bzw. Fortsetzung mit Fortsetzungen
-			Local $kopf = "", $text = $l
+			Local $kopf = "", $text = StringRegExpReplace($l, "^~", "")
 			If $art = "taste" Then
 				$kopf = StringLeft($l, 20)
 				$text = StringMid($l, 21)
@@ -5800,7 +5801,7 @@ Func HilfeUmbrechen($txt, $n)
 			$i += 1
 			While $i < $anz
 				Local $k = HilfeZeilenart($z[$i], ($i + 1 < $anz) ? $z[$i + 1] : "")
-				If $art = "fliess" And $k = "fliess" Then
+				If $art = "fliess" And $k = "fliess" And StringLeft($z[$i], 1) <> "~" Then
 					$text &= " " & $z[$i]
 				ElseIf $art <> "fliess" And $k = "fort" Then
 					$text &= " " & StringMid($z[$i], 21)
