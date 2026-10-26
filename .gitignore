@@ -1,0 +1,18 @@
+
+# lokale Einstellungen von Claude Code (Sitzungsrechte, freigegebene Ordner)
+.claude/
+
+# Gespraechsverlaeufe mit Claude Code (enthalten Patientennamen und Portalkennungen)
+Dialog-Claude-*.txt
+
+# kompiliertes Programm (entsteht mit Kompilieren.bat)
+MOReiter.exe
+
+# Einstellungen der eigenen Praxis (Kennungen, Ablage, PC-Namen; schreibt "MOReiter.exe Praxis")
+MOReiter-Praxis.ini
+
+# portable AutoIt3-Fassung, die Kompilieren.bat bei Bedarf herunterlaedt
+AutoIt3/
+
+# eigene Notizen
+Tastenwahl-Strg-oder-StrgAlt.txt

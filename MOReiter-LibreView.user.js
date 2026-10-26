@@ -1,0 +1,514 @@
+// ==UserScript==
+// @name         MOReiter LibreView
+// @namespace    https://github.com/libelle17/vb6wurzel
+// @version      1.16
+// @description  LibreView: Patient nach Name und Geburtsdatum suchen und seine Glukose-Berichte zeigen (Auftrag von MOReiter, Strg+L)
+// @match        https://www.libreview.com/*
+// @grant        none
+// @updateURL    https://raw.githubusercontent.com/libelle17/MOReiter/main/MOReiter-LibreView.user.js
+// @downloadURL  https://raw.githubusercontent.com/libelle17/MOReiter/main/MOReiter-LibreView.user.js
+// @run-at       document-start
+// ==/UserScript==
+
+// MOReiter oeffnet eine LibreView-Seite mit dem Auftrag hinter "#":
+//     ...#mor=Nachname;Vorname;TT.MM.JJJJ;Kennung;Nr;PC-Name   (Teile URL-kodiert)
+// Der Auftrag wird im sessionStorage des Tabs gemerkt (uebersteht Anmeldung und Seitenwechsel). LibreView
+// wechselt die Seiten meist ohne Neuladen, daher schaut das Skript laufend nach, welche Seite gerade zu
+// sehen ist, und erledigt dort den naechsten Schritt. Fortschritt im Seitentitel "MOR:Nr:Zustand":
+//   land        Wohnsitzland/Sprache gewaehlt
+//   passworttippen  Anmeldeseite: im E-Mail-Feld (Fokus) steht die Kennung ohne ihr letztes Zeichen; MOReiter
+//               tippt es nach und waehlt die gespeicherte Anmeldung aus der Firefox-Liste
+//   anmelden    Anmeldung abgeschickt (hoechstens einmal je Auftrag, sonst droht eine Sperre)
+//   anmeldefehler  LibreView hat E-Mail/Passwort abgelehnt
+//   ohnekennung keine Kennung vorgegeben: nicht automatisch anmelden
+//   zweifaktor  Zwei-Faktor-Anmeldung: Code per E-Mail angefordert
+//   code        Code-Seite: "14 Tage merken" angehakt, PC-Name eingetragen, der Mensch tippt den Code
+//   suche       angemeldet, Patient wird gesucht
+//   patient     Patient gefunden, seine Seite wird geoeffnet
+//   fertig      Glukose-Berichte sind offen (MOReiter ist fertig); das Skript wartet weiter, bis "PDF
+//               drucken/speichern" aktiv ist, und drueckt ihn
+//   gedruckt    "PDF drucken/speichern" gedrueckt
+//   keinedaten  Patient ohne Glukosedaten (nach 90 s kein Knopf "Glukose-Berichte")
+//   nichts      Patient nicht in LibreView (Tabelle bis zum Ende und alle Suchen ohne Treffer)
+//   fehler ...  sonstiger Fehler
+(function () {
+  'use strict';
+  var schluessel = 'MOReiterLibreView';
+  var takt = 400, hoechstens = 30 * 60 * 1000;
+
+  // --- Auftrag ---------------------------------------------------------------------------------------
+  function teil(s) {
+    try { return decodeURIComponent(s.replace(/\+/g, ' ')).trim(); } catch (e) { return s.trim(); }
+  }
+
+  function auftragAusAdresse() {
+    var m = location.hash.match(/^#mor=(.*)$/);
+    if (!m) return false;
+    var t = m[1].split(';').map(teil);
+    var a = { name: t[0] || '', vor: t[1] || '', geb: t[2] || '', kennung: t[3] || '', nr: t[4] || '',
+              pc: t[5] || '', beginn: Date.now(), schritte: {} };
+    sessionStorage.setItem(schluessel, JSON.stringify(a));
+    history.replaceState(history.state, '', location.pathname + location.search);
+    return true;
+  }
+
+  function auftrag() {
+    try { return JSON.parse(sessionStorage.getItem(schluessel) || 'null'); } catch (e) { return null; }
+  }
+
+  function merken(a) { sessionStorage.setItem(schluessel, JSON.stringify(a)); }
+  function erledigt() { sessionStorage.removeItem(schluessel); }
+
+  // einmalige Schritte (Klick auf Anmelden usw.) je Auftrag merken
+  function einmal(a, name) {
+    if (a.schritte[name]) return false;
+    a.schritte[name] = Date.now();
+    merken(a);
+    return true;
+  }
+  function seit(a, name) { return a.schritte[name] ? Date.now() - a.schritte[name] : -1; }
+
+  var zustand = '';
+  function titel(a, z) {
+    zustand = z;
+    var t = 'MOR:' + a.nr + ':' + z;
+    if (document.title != t) document.title = t;
+  }
+
+  // --- Hilfen ----------------------------------------------------------------------------------------
+  function $(id) { return document.getElementById(id); }
+
+  // Wert so setzen, dass React ihn mitbekommt
+  function setze(el, v) {
+    var proto = el.tagName == 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // Klick wie mit der Maus: Element in den sichtbaren Bereich holen, dann pointer-/mousedown, -up und click an
+  // seiner Mitte (manche Listen reagieren nur auf mousedown, element.click() allein liefe dann ins Leere)
+  function klicke(el) {
+    try { el.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (e) {}
+    var r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    var opt = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, button: 0, buttons: 1 };
+    if (window.PointerEvent) el.dispatchEvent(new PointerEvent('pointerdown', Object.assign({ pointerId: 1, isPrimary: true }, opt)));
+    el.dispatchEvent(new MouseEvent('mousedown', opt));
+    opt.buttons = 0;
+    if (window.PointerEvent) el.dispatchEvent(new PointerEvent('pointerup', Object.assign({ pointerId: 1, isPrimary: true }, opt)));
+    el.dispatchEvent(new MouseEvent('mouseup', opt));
+    el.dispatchEvent(new MouseEvent('click', opt));
+  }
+
+  function sichtbar(el) { return !!(el && (el.offsetWidth || el.offsetHeight || el.getClientRects().length)); }
+
+  function klein(s) { return (s || '').toLocaleLowerCase('de').replace(/\s+/g, ' ').trim(); }
+
+  // Vorname: "Hans Peter" in MO passt zu "Hans" in LibreView und umgekehrt
+  // Vornamen: Bindestrich wie Leerzeichen; es genuegt, dass alle Teile des kuerzeren im laengeren vorkommen
+  // ("Hans-Peter" in MO passt zu "Hans Peter", "Hans" oder "Peter" im Portal); das Geburtsdatum entscheidet mit
+  function teile(s) { return klein(s).split(/[\s-]+/).filter(function (x) { return x != ''; }); }
+  function namePasst(a, nach, vor) {
+    if (teile(a.name).join(' ') != teile(nach).join(' ')) return false;
+    var v1 = teile(a.vor), v2 = teile(vor);
+    if (!v1.length || !v2.length) return false;
+    var kurz = v1.length <= v2.length ? v1 : v2, lang = kurz === v1 ? v2 : v1;
+    return kurz.every(function (x) { return lang.indexOf(x) >= 0; });
+  }
+
+  var monate = ['januar', 'februar', 'maerz', 'april', 'mai', 'juni', 'juli', 'august', 'september',
+                'oktober', 'november', 'dezember'];
+  // Monat aus dem vollen oder abgekuerzten Namen (deutsch, sonst englisch), 0-11, -1 unbekannt
+  var monateEn = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  function monat(w) {
+    for (var i = 0; i < 12; i++) if (monate[i].indexOf(w) == 0 || w.indexOf(monate[i].slice(0, 3)) == 0 ||
+        w.indexOf(monateEn[i]) == 0) return i;
+    return -1;
+  }
+  function zwei(n) { return (n < 10 ? '0' : '') + n; }
+
+  // alle Datumsangaben eines Textes als TT.MM.JJJJ: T/M/JJJJ (LibreView-Tabelle, Tag zuerst),
+  // T.M.JJJJ und "1 Januar 1975"
+  function daten(text) {
+    var erg = [], m, re1 = /(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/g;
+    while ((m = re1.exec(text))) erg.push(zwei(+m[1]) + '.' + zwei(+m[2]) + '.' + m[3]);
+    // "1 Januar 1975", "1. Jan. 1975", "Jan 1, 1975"
+    var t = klein(text).replace(/ä/g, 'ae'), re2 = /(\d{1,2})\.?\s+([a-z]{3,})\.?,?\s+(\d{4})/g,
+        re3 = /\b([a-z]{3,})\.?\s+(\d{1,2}),?\s+(\d{4})/g;
+    while ((m = re2.exec(t))) { var i = monat(m[2]); if (i >= 0) erg.push(zwei(+m[1]) + '.' + zwei(i + 1) + '.' + m[3]); }
+    while ((m = re3.exec(t))) { var k = monat(m[1]); if (k >= 0) erg.push(zwei(+m[2]) + '.' + zwei(k + 1) + '.' + m[3]); }
+    return erg;
+  }
+
+  // "Letzte verfuegbare Daten" als Zeitpunkt (ms): T/M/JJJJ, "Heute", "Gestern", "vor einem Tag", "vor 6 Tagen",
+  // "vor 3 Stunden"; 0 = keine Daten. Ein Datum in der Zukunft (Lesegeraet mit falscher Uhr) zaehlt nur 1, also
+  // hinter jedem echten Datum
+  function datenStand(text) {
+    var st = datenStandRoh(text);
+    return st > Date.now() + 86400000 ? 1 : st;
+  }
+  function datenStandRoh(text) {
+    var t = klein(text), heute = new Date(), m;
+    heute.setHours(12, 0, 0, 0);
+    var tage = function (n) { return heute.getTime() - n * 86400000; };
+    if (/heute|stunde|minute|sekunde/.test(t)) return tage(0);
+    if (/gestern/.test(t)) return tage(1);
+    if ((m = t.match(/vor (einem|einer|\d+) (tag|woche|monat)/))) {
+      var n = /^\d+$/.test(m[1]) ? +m[1] : 1;
+      return tage(n * (m[2] == 'tag' ? 1 : m[2] == 'woche' ? 7 : 30));
+    }
+    var d = daten(text)[0];
+    if (!d) return 0;
+    var p = d.split('.');
+    return new Date(+p[2], +p[1] - 1, +p[0], 12).getTime();
+  }
+
+  var UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+  // zum Patienten wie ein Mensch: auf den Treffer bzw. die Tabellenzeile $el klicken (LibreView leitet einen
+  // direkten Aufruf von /patient/<id>/... sonst zum Dashboard zurueck); erst wenn sich nach 5 s nichts tut,
+  // die Adresse laden
+  function zumPatienten(a, id, el) {
+    titel(a, 'patient');
+    if (el && einmal(a, 'patientKlick')) {
+      console.log('MOReiter LibreView: Klick auf <' + el.tagName.toLowerCase() + ' id="' +
+        (el.id || '').replace(new RegExp(UUID.source, 'gi'), '<uuid>') + '" class="' + el.className + '">');
+      klicke(el);
+      return;
+    }
+    if ((!el || seit(a, 'patientKlick') > 5000) && einmal(a, 'patientAdresse')) {
+      console.log('MOReiter LibreView: Klick ohne Wirkung, lade /patient/<uuid>/profile');
+      location.assign('/patient/' + id + '/profile');
+    }
+  }
+
+  // --- Seiten ----------------------------------------------------------------------------------------
+  // Wohnsitzland und Sprache (nur beim ersten Besuch bzw. ohne Cookies)
+  function land(a) {
+    var c = $('country-select'), l = $('language-select'), b = $('submit-button');
+    if (!c || !b) return false;
+    titel(a, 'land');
+    if (einmal(a, 'land')) {
+      if (c.value != 'DE') setze(c, 'DE');
+      if (l && l.value != 'de-DE') setze(l, 'de-DE');
+      setTimeout(function () { b.click(); }, 300);
+    }
+    return true;
+  }
+
+  // Anmeldung: hoechstens ein Versuch je Auftrag, und nur mit der vorgegebenen Kennung ([LibreView] Kennung=).
+  // Firefox traegt beim Laden (auch mehrmals) die erste gespeicherte Anmeldung ein, die eines anderen Benutzers
+  // sein kann: dann E-Mail ersetzen und Passwort leeren, bei jedem Takt. Abgeschickt wird erst, wenn E-Mail
+  // gleich der Kennung ist, ein Passwort drinsteht und sich beides 1 s nicht mehr geaendert hat.
+  function anmelden(a) {
+    var em = $('loginForm-email-input'), pw = $('loginForm-password-input'), b = $('loginForm-submit-button');
+    if (!em || !pw || !b) return false;
+    if (seit(a, 'anmelden') >= 0) {
+      if (/Problem mit Ihrer E-Mail/i.test(document.body.innerText)) { titel(a, 'anmeldefehler'); erledigt(); }
+      else titel(a, 'anmelden');
+      return true;
+    }
+    if (a.kennung == '') { titel(a, 'ohnekennung'); erledigt(); return true; }
+    if (seit(a, 'loginSeite') < 0) einmal(a, 'loginSeite');
+    // Firefox erst eintragen lassen
+    if (seit(a, 'loginSeite') < 1500) { titel(a, 'anmelden'); return true; }
+    // Firefox oeffnet seine Liste der gespeicherten Anmeldungen nur bei echtem Tippen: daher die Kennung ohne
+    // ihr letztes Zeichen einsetzen; MOReiter tippt es auf "passworttippen" nach und waehlt dann den ersten
+    // (auf diese Kennung gefilterten) Eintrag der Liste
+    var ohneLetztes = a.kennung.slice(0, -1);
+    if (klein(em.value) != klein(a.kennung)) {
+      if (klein(em.value) == klein(ohneLetztes) && pw.value == '') {
+        // Fokus bei jedem Takt zurueckholen, sonst landet das nachgetippte Zeichen woanders
+        if (document.activeElement !== em) em.focus();
+        titel(a, 'passworttippen');
+        return true;
+      }
+      setze(em, ohneLetztes);
+      if (pw.value != '') setze(pw, '');
+      stand = '';
+      titel(a, 'anmelden');
+      return true;
+    }
+    var jetzt = em.value + '\u0001' + pw.value;
+    if (jetzt != stand) { stand = jetzt; standSeit = Date.now(); }
+    // Kennung vollstaendig, aber nach 3 s noch kein Passwort (Firefox-Liste nicht aufgegangen): wieder ohne
+    // letztes Zeichen, MOReiter tippt erneut (hoechstens dreimal)
+    if (pw.value == '' && Date.now() - standSeit > 3000) {
+      setze(em, ohneLetztes);
+      stand = '';
+      titel(a, 'passworttippen');
+      return true;
+    }
+    if (pw.value != '' && Date.now() - standSeit >= 1000 && klein(em.value) == klein(a.kennung)) {
+      einmal(a, 'anmelden');
+      titel(a, 'anmelden');
+      b.click();
+      return true;
+    }
+    // Kennung vollstaendig, aber (noch) kein Passwort: Firefox traegt es nach der Auswahl ein; kommt keins,
+    // bleibt es dabei (MOReiter meldet dann "bitte selbst anmelden")
+    titel(a, 'anmelden');
+    return true;
+  }
+  var stand = '', standSeit = 0;
+
+  // Schutz vor ungewolltem Abschicken (z.B. Enter von MOReiter, wenn die Firefox-Liste nicht aufging), solange
+  // ein Auftrag laeuft: nur mit E-Mail = Kennung und Passwort; zaehlt sonst womoeglich als Fehlversuch
+  function abschickenErlaubt() {
+    var a = auftrag(), em = $('loginForm-email-input'), pw = $('loginForm-password-input');
+    if (!a || !em || !pw) return true;
+    return a.kennung != '' && klein(em.value) == klein(a.kennung) && pw.value != '';
+  }
+  function abschickenPruefen(ev) {
+    var t = ev.target;
+    var login = t && (t.id == 'loginForm-submit-button' || (t.closest && t.closest('#loginForm-submit-button')) ||
+      (ev.type == 'submit' && t.querySelector && t.querySelector('#loginForm-email-input')));
+    if (login && !abschickenErlaubt()) {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      console.log('MOReiter LibreView: Anmelden ohne passende E-Mail/Passwort verhindert');
+    }
+  }
+  window.addEventListener('submit', abschickenPruefen, true);
+  window.addEventListener('click', abschickenPruefen, true);
+
+  // Zwei-Faktor, Schritt 1: Code per E-Mail anfordern
+  function zweiFaktor(a) {
+    var sel = $('2fa-method-select'), b = $('twoFactor-step1-next-button');
+    if (!sel || !b) return false;
+    titel(a, 'zweifaktor');
+    if (einmal(a, 'codeAnfordern')) {
+      if (sel.value != 'email') setze(sel, 'email');
+      setTimeout(function () { b.click(); }, 500);
+    }
+    return true;
+  }
+
+  // Zwei-Faktor, Schritt 2: 14 Tage merken, PC-Name als Kurzname, Fokus ins Codefeld; den Code tippt der Mensch
+  function codeSeite(a) {
+    var code = $('twoFactor-step2-code-input'), cb = $('twoFactor-step2-rememberBrowser-checkbox');
+    if (!code) return false;
+    titel(a, 'code');
+    if (cb && !cb.checked && einmal(a, 'merken')) {
+      var lab = $('twoFactor-step2-rememberBrowser-checkbox-label');
+      (lab || cb).click();
+    }
+    if (cb && cb.checked && a.pc && !a.schritte.kurzname) {
+      // das Feld "Kurzname" erscheint erst nach dem Haken
+      var karte = $('wizard-card') || document, felder = karte.querySelectorAll('input');
+      for (var i = 0; i < felder.length; i++) {
+        var f = felder[i];
+        if (f === code || f.type == 'checkbox' || f.type == 'hidden' || !sichtbar(f)) continue;
+        if (f.value == '') setze(f, a.pc);
+        einmal(a, 'kurzname');
+        break;
+      }
+    }
+    if (einmal(a, 'codeFokus')) code.focus();
+    return true;
+  }
+
+  // Dashboard: Patient in der Tabelle (die LibreView erst beim Scrollen weiter laedt: daher selbst ans Ende
+  // scrollen, bis keine Zeilen mehr dazukommen) und zugleich ueber die Patientensuche (erst Nachname, dann
+  // "Vorname Nachname", dann "Nachname, Vorname"); aufgegeben wird nach 60 s
+  // Suchtexte: Nachname, "Vorname Nachname", "Nachname, Vorname", bei mehrteiligen Vornamen (Hans-Peter)
+  // noch "Hans Nachname" und "Peter Nachname"
+  function suchTexte(a) {
+    var l = [a.name, a.vor + ' ' + a.name, a.name + ', ' + a.vor], v = teile(a.vor);
+    if (v.length > 1) v.forEach(function (x) { l.push(x.charAt(0).toUpperCase() + x.slice(1) + ' ' + a.name); });
+    return l;
+  }
+  var zeilenZahl = -1, zeilenSeit = 0;
+  function dashboard(a) {
+    if (!/^\/dashboard/.test(location.pathname)) return false;
+    if (seit(a, 'patientKlick') < 0) titel(a, 'suche');
+    var zeilen = document.querySelectorAll('tr[id$="-table-cell-row"]');
+    // derselbe Patient steht oefter mehrfach in der Tabelle: dann die Zeile mit den juengsten "Letzte verfuegbare
+    // Daten"; beim ersten Treffer noch 1,5 s warten, bis die Nachbarzeilen geladen sind
+    var bester = null, besterId = '', besterStand = -1;
+    for (var i = 0; i < zeilen.length; i++) {
+      var z = zeilen[i], id = (z.id.match(UUID) || [])[0];
+      var zelle = function (c) { var e = z.querySelector('[data-col="' + c + '"]'); return e ? e.textContent : ''; };
+      if (id && namePasst(a, zelle('lastName'), zelle('firstName')) && daten(zelle('dob')).indexOf(a.geb) >= 0) {
+        var st = datenStand(zelle('lastAvailableData'));
+        if (st > besterStand) { bester = z; besterId = id; besterStand = st; }
+      }
+    }
+    if (bester) {
+      if (seit(a, 'trefferGesehen') < 0) einmal(a, 'trefferGesehen');
+      if (seit(a, 'trefferGesehen') < 1500 && seit(a, 'patientKlick') < 0) { titel(a, 'patient'); return true; }
+      zumPatienten(a, besterId, bester.querySelector('[data-col="lastName"] div') || bester);
+      return true;
+    }
+    if (seit(a, 'dashboard') < 0) { einmal(a, 'dashboard'); return true; }
+    // Tabelle erst laden lassen
+    if (seit(a, 'dashboard') < 2500 && !zeilen.length) return true;
+    // weiterscrollen, solange neue Zeilen kommen
+    if (zeilen.length != zeilenZahl) { zeilenZahl = zeilen.length; zeilenSeit = Date.now(); }
+    if (zeilen.length && Date.now() - zeilenSeit < 4000) {
+      var sc = zeilen[zeilen.length - 1].parentElement;
+      while (sc && sc !== document.body && !(sc.scrollHeight > sc.clientHeight + 5 &&
+             /(auto|scroll)/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;
+      if (sc && sc !== document.body) sc.scrollTop = sc.scrollHeight;
+      else zeilen[zeilen.length - 1].scrollIntoView({ block: 'end' });
+    }
+    // Patientensuche
+    var huelle = $('main-header-patient-search-wrapper'), ein = $('main-header-patient-search-inner-input');
+    if (huelle && ein) {
+      var n = a.schritte.suchNr || 0;
+      if (n < suchTexte(a).length && (n == 0 || seit(a, 'suche' + (n - 1)) > 4000) && einmal(a, 'suche' + n)) {
+        a.schritte.suchNr = n + 1;
+        merken(a);
+        var text = suchTexte(a)[n];
+        klicke(huelle);
+        setTimeout(function () { ein.focus(); setze(ein, text); }, 300);
+        return true;
+      }
+      // Treffer: <div id="patient-result-button-<id>" role="button"> mit Name und Geburtsdatum; mehrere gleiche
+      // (doppelt eingetragen): der mit den juengsten Daten laut Tabellenzeile <id>-table-cell-row, sonst der erste
+      var treffer = document.querySelectorAll('[id^="patient-result-button-"]'), tBester = null, tId = '', tStand = -1;
+      for (var j = 0; j < treffer.length; j++) {
+        var t = treffer[j], kid = t.id.match(UUID);
+        if (kid && klein(t.textContent).indexOf(klein(a.name)) >= 0 && daten(t.textContent).indexOf(a.geb) >= 0) {
+          var tz = document.getElementById(kid[0] + '-table-cell-row');
+          var tl = tz && tz.querySelector('[data-col="lastAvailableData"]');
+          var ts = tl ? datenStand(tl.textContent) : 0;
+          if (ts > tStand) { tBester = t; tId = kid[0]; tStand = ts; }
+        }
+      }
+      if (tBester) {
+        zumPatienten(a, tId, tBester);
+        return true;
+      }
+    }
+    // nicht in LibreView: Tabelle waechst nicht mehr und alle Suchen sind durch; spaetestens nach 60 s
+    var fertigGesucht = zeilen.length && Date.now() - zeilenSeit > 4000 &&
+      seit(a, 'suche' + (suchTexte(a).length - 1)) > 4000;
+    if ((fertigGesucht || seit(a, 'dashboard') > 60000) && seit(a, 'patientKlick') < 0) {
+      bericht(a, zeilen, document.querySelector('[class*="searchResults"]') || document.body);
+      titel(a, 'nichts');
+      erledigt();
+    }
+    return true;
+  }
+
+  // fuer die Fehlersuche (Strg+Umsch+K in Firefox): Aufbau von Tabelle und Trefferliste, Namen und Ziffern
+  // unkenntlich (Buchstaben -> a, Ziffern -> 9)
+  function bericht(a, zeilen, ergebnis) {
+    var unk = function (s) { return s.replace(/[^\W\d_]/g, 'a').replace(/\d/g, '9'); };
+    var gleich = 0;
+    for (var i = 0; i < zeilen.length; i++) {
+      var n = zeilen[i].querySelector('[data-col="lastName"]');
+      if (n && klein(n.textContent) == klein(a.name)) gleich++;
+    }
+    console.log('MOReiter LibreView: Tabelle ' + zeilen.length + ' Zeilen, davon ' + gleich +
+      ' mit gleichem Nachnamen; gesuchtes Datum ' + unk(a.geb));
+    var kopie = ergebnis.cloneNode(true), w = document.createTreeWalker(kopie, NodeFilter.SHOW_TEXT), k;
+    while ((k = w.nextNode())) k.nodeValue = unk(k.nodeValue);
+    console.log('MOReiter LibreView: Trefferliste\n' + kopie.outerHTML.replace(new RegExp(UUID.source, 'gi'), '<uuid>').slice(0, 20000));
+  }
+
+  // Patientenseite: zu "Glukoseverlaufsdaten", dort "Glukose-Berichte" (der Knopf kommt erst, wenn die Daten
+  // geladen sind, das kann dauern; ohne ihn nach 90 s "keinedaten")
+  function patient(a) {
+    var m = location.pathname.match(/^\/patient\/([0-9a-f-]{36})(\/[a-z]+)?/i);
+    if (!m) return false;
+    titel(a, 'patient');
+    if (m[2] != '/reports') {
+      // Seitenleiste "Glukoseverlaufsdaten"
+      var nav = $('reports-nav-button-container');
+      if (nav && einmal(a, 'verlaufKlick')) klicke(nav);
+      else if (seit(a, 'verlaufKlick') > 5000 && einmal(a, 'verlaufAdresse')) location.assign('/patient/' + m[1] + '/reports');
+      return true;
+    }
+    if (seit(a, 'patientSeite') < 0) einmal(a, 'patientSeite');
+    var b = berichtKnopf();
+    if (b && !b.disabled) {
+      if (einmal(a, 'berichtKlick')) klicke(b);
+      // wirkt der Klick nicht, nach 5 s noch einmal
+      else if (seit(a, 'berichtKlick') > 5000 && einmal(a, 'berichtKlick2')) klicke(b);
+      return true;
+    }
+    if (seit(a, 'patientSeite') > 90000) { titel(a, 'keinedaten'); erledigt(); }
+    return true;
+  }
+
+  // Knopf "Glukose-Berichte": sonst in der Karte "Glukoseverlaufsdaten" (pastGlucoseCard), bei neuen Daten in der
+  // gruenen Karte "Neue Glukosedaten" mit anderer id; notfalls nach der Aufschrift
+  // (der erste sichtbare, nicht gesperrte; sonst irgendeiner, damit weiter auf ihn gewartet wird)
+  function berichtKnopf() {
+    var k = [].slice.call(document.querySelectorAll('#pastGlucoseCard-report-button, [id$="GlucoseCard-report-button"], ' +
+      '[id*="report-button"]:not(#reports-print-button)'));
+    [].forEach.call(document.querySelectorAll('button, a, [role="button"]'), function (e) {
+      if (/^\s*(Glukose-Berichte|Glucose Reports)\s*$/i.test(e.textContent)) k.push(e);
+    });
+    for (var i = 0; i < k.length; i++)
+      if (!k[i].disabled && k[i].getBoundingClientRect().width > 0) return k[i];
+    return k[0] || null;
+  }
+
+  // Glukose-Berichte (/reports/<id>): MOReiter ist hier fertig; das Skript wartet noch, bis der Knopf
+  // "PDF drucken/speichern" aktiv ist (das kann 10 min dauern), und drueckt ihn
+  function berichte(a) {
+    if (!/^\/reports\//.test(location.pathname)) return false;
+    if (!a.zeitraum) { var zr = berichtZeitraum(); if (zr) { a.zeitraum = zr; merken(a); } }
+    titel(a, mitZeitraum(a, 'fertig'));
+    if (seit(a, 'berichtSeite') < 0) einmal(a, 'berichtSeite');
+    var b = $('reports-print-button');
+    if (b && !b.disabled && !b.hasAttribute('disabled')) {
+      // kurz stehen lassen, falls er beim Laden einzelner Seiten wieder inaktiv wird
+      if (seit(a, 'druckBereit') < 0) { einmal(a, 'druckBereit'); return true; }
+      if (seit(a, 'druckBereit') > 1500) {
+        klicke(b);
+        titel(a, mitZeitraum(a, 'gedruckt'));
+        erledigt();
+        // solange "fertig"/"gedruckt" im Titel steht, nimmt MOReiter fuer einen neuen Auftrag einen neuen Tab
+        // (der Download soll nicht abbrechen); nach 60 s ist der Tab wieder frei
+        setTimeout(function () { if (/^MOR:\d+:gedruckt/.test(document.title)) document.title = 'LibreView'; }, 60000);
+      }
+      return true;
+    }
+    if (a.schritte.druckBereit) { delete a.schritte.druckBereit; merken(a); }
+    if (seit(a, 'berichtSeite') > 20 * 60 * 1000) erledigt();
+    return true;
+  }
+
+  // Zeitraum des Berichts an die Fertigmeldung haengen ("fertig|TT.MM.JJJJ-TT.MM.JJJJ"), MOReiter setzt ihn in
+  // den Dateinamen ein
+  function mitZeitraum(a, z) { return a.zeitraum ? z + '|' + a.zeitraum : z; }
+
+  // Zeitraum aus den Berichtsseiten (iframes, z.B. "28 Tage | 16 Jun 2026 - 13 Jul 2026"); "" falls nicht lesbar
+  function berichtZeitraum() {
+    var f = document.querySelectorAll('iframe[title="reportFrame"]');
+    for (var i = 0; i < f.length; i++) {
+      try {
+        var t = f[i].contentDocument.body.innerText;
+        var m = t.match(/(\d{1,2}\.?\s+[^\s\d]{3,}\.?\s+\d{4})\s*[-\u2013]\s*(\d{1,2}\.?\s+[^\s\d]{3,}\.?\s+\d{4})/);
+        if (!m) continue;
+        var v = daten(m[1])[0], b = daten(m[2])[0];
+        if (v && b) return v + '-' + b;
+      } catch (e) {}
+    }
+    return '';
+  }
+
+  // --- Ablauf ----------------------------------------------------------------------------------------
+  function schritt() {
+    var a = auftrag();
+    if (!a) return;
+    if (Date.now() - a.beginn > hoechstens) { erledigt(); return; }
+    if (!document.body) return;
+    try {
+      land(a) || anmelden(a) || zweiFaktor(a) || codeSeite(a) || berichte(a) || patient(a) || dashboard(a) ||
+        titel(a, zustand || 'suche');
+    } catch (e) {
+      titel(a, 'fehler ' + e.message);
+      erledigt();
+    }
+  }
+
+  auftragAusAdresse();
+  // gleiche Seite mit neuem "#mor=" laedt nicht neu, sondern aendert nur den Anker
+  window.addEventListener('hashchange', function () { if (auftragAusAdresse()) zustand = ''; });
+  setInterval(schritt, takt);
+})();
