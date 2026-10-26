@@ -33,7 +33,11 @@ unterstützt. Benutzung auf eigene Verantwortung, ohne Gewährleistung (s. [LICE
 
 ## Einrichten
 
-1. Oben auf dieser Seite „Code“ → „Download ZIP“ wählen und das ZIP entpacken, z.B. nach `C:\MOReiter`.
+1. Den grünen Knopf „<> Code“ rechts über der Dateiliste aufklappen und „Download ZIP“ wählen (nicht der
+   Reiter „Code“ oben links), oder direkt über
+   [https://github.com/libelle17/MOReiter/archive/refs/heads/main.zip](https://github.com/libelle17/MOReiter/archive/refs/heads/main.zip)
+   herunterladen; eine Anmeldung bei GitHub ist nicht nötig. Vor dem Entpacken: Rechtsklick auf das ZIP →
+   Eigenschaften → „Zulassen“ anhaken, sonst warnt Windows bei jeder Datei. Dann entpacken, z.B. nach `C:\MOReiter`.
 2. `Kompilieren.bat` doppelklicken. Beim ersten Mal fragt MOReiter in einem Fenster, was die Praxis nutzt
    (Labor, Zuckerportale, Smart Pix, …) und welche Werte gelten (Ablageordner, Benutzerkennungen …),
    und speichert das in `MOReiter-Praxis.ini`. Ändern lässt es sich später jederzeit mit
