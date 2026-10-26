@@ -5676,7 +5676,7 @@ Func Hilfe()
 	If $gHilfe Then
 		If WinActive($gHilfe) Then Return HilfeWeg()
 		If BitAND(WinGetState($gHilfe), 16) Then WinSetState($gHilfe, "", @SW_RESTORE)
-		WinActivate($gHilfe)
+		HilfeNachVorn()
 		Return True
 	EndIf
 	Local $datei = @TempDir & "\MOReiter-Hilfe.txt"
@@ -5686,10 +5686,16 @@ Func Hilfe()
 	If $fh = -1 Then Return Meldung("Hilfetext nicht gefunden")
 	Local $txt = FileRead($fh)
 	FileClose($fh)
+	$gHilfe = GUICreate("MOReiter - Hilfe", 1000, 700, -1, -1, BitOR($WS_CAPTION, $WS_SYSMENU, $WS_MINIMIZEBOX))
+	GUISetBkColor(0xFFFFFF, $gHilfe)
+	GUISetState(@SW_MAXIMIZE, $gHilfe)
+	Local $groesse = WinGetClientSize($gHilfe), $b = $groesse[0], $h = $groesse[1]
 	$txt = HilfeBedingt($txt)
 	$txt = StringRegExpReplace($txt, "\r?\n", @CRLF)
 	$txt = StringReplace($txt, "{AUFRUFE}", AufrufeText())
 	$txt = StringReplace($txt, "{TASTENTABELLE}", TastenTabelle())
+	; Absaetze auf die Fensterbreite umbrechen (Rand, Bildlaufleiste und etwas Luft abgezogen)
+	$txt = HilfeUmbrechen($txt, Int(($b - 40) / HilfeZeichenbreite()))
 	; Stand und Pfad der exe unter der Ueberschrift (Titel und Unterstreichung bleiben oben)
 	Local $z2 = StringInStr($txt, @CRLF, 0, 2)
 	$txt = StringLeft($txt, $z2 + 1) & "Stand " & Stand() & " (" & @AutoItExe & ")" & @CRLF & StringMid($txt, $z2 + 2)
@@ -5708,17 +5714,13 @@ Func Hilfe()
 		$farbe[UBound($farbe) - 1][1] = $e - 1
 	WEnd
 	$gHilfeInhalt = $txt
-	$gHilfe = GUICreate("MOReiter - Hilfe", 1000, 700, -1, -1, BitOR($WS_CAPTION, $WS_SYSMENU, $WS_MINIMIZEBOX))
-	GUISetBkColor(0xFFFFFF, $gHilfe)
-	GUISetState(@SW_MAXIMIZE, $gHilfe)
-	Local $groesse = WinGetClientSize($gHilfe), $b = $groesse[0], $h = $groesse[1]
 	; Suchzeile oben: Strg+F setzt den Cursor hinein und faengt wieder oben an, Enter bzw. F3 suchen weiter
 	GUICtrlCreateLabel("Suchen:", 8, 11, 60, 20)
 	GUICtrlSetFont(-1, 10, 400, 0, "Consolas")
 	$gHilfeSuch = GUICtrlCreateInput("", 72, 8, 280, 22)
 	GUICtrlSetFont(-1, 10, 400, 0, "Consolas")
-	GUICtrlCreateLabel("Strg+F: Suchwort (von vorn), Enter oder F3: weiter   Bild auf/ab, Strg+Pos1/Ende   Strg+A: alles   " & _
-			"Alt+Tab: daneben ausprobieren   Esc: schlie" & ChrW(223) & "en", 362, 11, $b - 370, 20)
+	GUICtrlCreateLabel("Strg+F suchen, Enter/F3 weiter   Bild auf/ab, Strg+Pos1/Ende   Strg+A alles   Alt+Tab daneben ausprobieren   " & _
+			"Esc schlie" & ChrW(223) & "en", 362, 11, $b - 370, 20)
 	GUICtrlSetFont(-1, 9, 400, 0, "Consolas")
 	; schmale Raender, damit moeglichst viel auf einmal zu sehen ist
 	$gHilfeText = _GUICtrlRichEdit_Create($gHilfe, "", 4, 36, $b - 6, $h - 38, _
@@ -5747,9 +5749,104 @@ Func Hilfe()
 			["{PGUP}", $gHilfeHoch], ["{PGDN}", $gHilfeRunter], ["^{HOME}", $gHilfeAnfang], ["^{END}", $gHilfeEnde], _
 			["{ESC}", $gHilfeZu], ["!{F4}", $gHilfeZu]]
 	GUISetAccelerators($tasten, $gHilfe)
-	WinActivate($gHilfe)
+	HilfeNachVorn()
 	_WinAPI_SetFocus($gHilfeText)
 	Return True
+EndFunc
+
+; ein Programm im Hintergrund darf sein Fenster nicht ohne Weiteres nach vorn holen (es ginge hinter dem aktiven
+; Fenster auf): kurz zuoberst, aktivieren, dann wieder normal, so dass Alt+Tab und andere Fenster wie gewohnt gehen
+Func HilfeNachVorn()
+	WinSetOnTop($gHilfe, "", 1)
+	WinActivate($gHilfe)
+	WinSetOnTop($gHilfe, "", 0)
+EndFunc
+
+; Breite eines Zeichens in Consolas 10 Punkt (wie im Hilfetext) in Pixeln
+Func HilfeZeichenbreite()
+	Local $dc = _WinAPI_GetDC(0)
+	Local $font = _WinAPI_CreateFont(-Round(10 * _WinAPI_GetDeviceCaps($dc, 90) / 72), 0, 0, 0, 400, False, False, False, 1, 0, 0, 0, 0, "Consolas")
+	Local $alt = _WinAPI_SelectObject($dc, $font)
+	Local $groesse = _WinAPI_GetTextExtentPoint32($dc, "MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM")
+	_WinAPI_SelectObject($dc, $alt)
+	_WinAPI_DeleteObject($font)
+	_WinAPI_ReleaseDC(0, $dc)
+	Local $w = DllStructGetData($groesse, "X") / 100
+	Return ($w > 3) ? $w : 8
+EndFunc
+
+; bricht die Absaetze des Hilfetexts auf $n Zeichen je Zeile neu um, damit breite Bildschirme genutzt werden:
+; Fliesstext (Zeilen ohne Einzug und ohne doppelte Leerzeichen) und Tasten-Eintraege (Taste in den ersten 20
+; Zeichen, Beschreibung ab Spalte 21, Fortsetzungszeilen mit 20 Leerzeichen eingerueckt; diese behalten den Einzug);
+; Ueberschriften (vor ---- bzw. ====), Trennlinien, Tabellen (doppelte Leerzeichen im Text), anders eingerueckte
+; Zeilen und Steuerzeilen ({...}) bleiben, wie sie sind
+Func HilfeUmbrechen($txt, $n)
+	If $n < 60 Then Return $txt
+	Local $z = StringSplit($txt, @CRLF, 1 + 2), $erg = "", $i = 0, $anz = UBound($z)
+	Local $einzug = "                    "
+	While $i < $anz
+		Local $l = $z[$i], $naechste = ($i + 1 < $anz) ? $z[$i + 1] : ""
+		Local $art = HilfeZeilenart($l, $naechste)
+		If $art = "fliess" Or $art = "taste" Or $art = "fort" Then
+			; Absatz sammeln: Fliesstext mit weiteren Fliesstextzeilen, Tasten-Eintrag bzw. Fortsetzung mit Fortsetzungen
+			Local $kopf = "", $text = $l
+			If $art = "taste" Then
+				$kopf = StringLeft($l, 20)
+				$text = StringMid($l, 21)
+			ElseIf $art = "fort" Then
+				$kopf = $einzug
+				$text = StringMid($l, 21)
+			EndIf
+			$i += 1
+			While $i < $anz
+				Local $k = HilfeZeilenart($z[$i], ($i + 1 < $anz) ? $z[$i + 1] : "")
+				If $art = "fliess" And $k = "fliess" Then
+					$text &= " " & $z[$i]
+				ElseIf $art <> "fliess" And $k = "fort" Then
+					$text &= " " & StringMid($z[$i], 21)
+				Else
+					ExitLoop
+				EndIf
+				$i += 1
+			WEnd
+			$erg &= HilfeZeilen($kopf, ($art = "fliess") ? "" : $einzug, $text, $n)
+		ElseIf StringRegExp($l, "^(-{10,}|={10,})$") Then
+			; Trennlinien ueber die ganze Breite
+			$erg &= StringReplace(StringFormat("%" & $n & "s", ""), " ", StringLeft($l, 1)) & @CRLF
+			$i += 1
+		Else
+			$erg &= $l & @CRLF
+			$i += 1
+		EndIf
+	WEnd
+	Return StringTrimRight($erg, 2)
+EndFunc
+
+; "fliess", "taste", "fort" (Fortsetzung mit 20 Leerzeichen Einzug) oder "fest"
+Func HilfeZeilenart($l, $naechste)
+	If $l = "" Or StringLeft($l, 1) = "{" Or StringRegExp($naechste, "^(-{10}|={10})") Or StringRegExp($l, "^(-{10}|={10})") Then Return "fest"
+	If StringRegExp($l, "^ {20}\S") Then Return StringInStr(StringMid($l, 21), "  ") ? "fest" : "fort"
+	If StringLeft($l, 1) = " " Then Return "fest"
+	If StringLen($l) > 21 And StringMid($l, 20, 1) = " " And StringMid($l, 21, 1) <> " " And StringInStr(StringLeft($l, 20), "  ") _
+			And Not StringInStr(StringMid($l, 21), "  ") Then Return "taste"
+	If StringInStr($l, "  ") Then Return "fest"
+	Return "fliess"
+EndFunc
+
+; $text in Zeilen zu hoechstens $n Zeichen, die erste mit $kopf, die weiteren mit $weiter davor
+Func HilfeZeilen($kopf, $weiter, $text, $n)
+	; $leer: in der Zeile steht noch kein Wort (ein zu langes Wort bekommt eine Zeile fuer sich)
+	Local $erg = "", $zeile = $kopf, $leer = True
+	For $w In StringSplit(StringStripWS($text, 7), " ", 2)
+		If Not $leer And StringLen($zeile) + 1 + StringLen($w) > $n Then
+			$erg &= $zeile & @CRLF
+			$zeile = $weiter
+			$leer = True
+		EndIf
+		$zeile &= ($leer ? "" : " ") & $w
+		$leer = False
+	Next
+	Return $erg & $zeile & @CRLF
 EndFunc
 
 ; Schliessen-Ereignis und die Tasten des Hilfefensters abfragen
