@@ -211,10 +211,11 @@ MOReiter öffnen darf ("immer erlauben" anhaken). Die so gestartete zweite MORei
 sobald die PDFs abgelegt sind.
 {ENDE Laufzettel}
 {WENN Portale}
-Die PDFs der Zuckerportale und die Laborbefunde (Strg+O) ordnet MOReiter danach gleich ein wie
-DokimpKurz ([Dokumente] Einordnen=1):
-Sicherheitskopie nach p:\eingelesen\<Jahr>, Einträge in quelle (tmbrie, dokprotlist, dokprotinh; Mitarbeiter
-und Autor = PC-Name) und Verschieben nach p:\dok\<Pat_id>. Die Patientennummer kommt vom Laufzettel oder aus
+Mit [Dokumente] Einordnen=1 ordnet MOReiter die PDFs der Zuckerportale und die Laborbefunde (Strg+O) danach
+weitergehend ein, in drei einzeln abschaltbaren Stufen: Sicherheitskopie nach Eingelesen=\<Jahr> (Sicherung=),
+Einträge in die Datenbank quelle (Datenbank=; tmbrie, dokprotlist, dokprotinh; Mitarbeiter und Autor = PC-Name)
+und Verschieben nach Dok=\<Pat_id> (Patientenordner=; ohne Datenbank von Medical Office nach
+Dok=\<Nachname, Vorname, Geburtsdatum>). Die Patientennummer kommt vom Laufzettel oder aus
 Medical Office (Name und Geburtsdatum müssen eindeutig sein); klappt etwas nicht, bleibt die Datei mit einer
 Meldung in p:\ liegen.
 {ENDE Portale}

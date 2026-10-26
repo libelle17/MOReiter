@@ -4113,61 +4113,119 @@ EndFunc
 ; Repo bleiben unveraendert, so dass ein Update sie ersetzen kann). Abgeschaltet wird mit leeren Werten: Labor
 ; ([Labor] Url=, Strg+O), Zuckerportale (Url= der Portale, Strg+L/D/G/Y/E/Z), Smart Pix (Strg+S, Strg+Umsch+S),
 ; Patientenlaufzettel (Dateilese und FCAufruf: Strg+P, Strg+Umsch+P, Strg+A, Strg+I); Strg+Umsch+T bleibt, solange
-; es ein Portal gibt; Einordnen ([Dokumente] Einordnen=1/0)
+; es ein Portal gibt. Reihenfolge nach Verbreitung; was von einem Kaestchen abhaengt, ist grau, solange es aus ist
 Func PraxisEinrichten()
 	AufrufeLaden()
 	Local $an = PraxisStand()
-	Local $namen[5] = ["Labor", "Zucker", "SmartPix", "Laufzettel", "Einordnen"], $kaestchen[5]
-	Local $text[5] = ["Labor: das Labor stellt seine Befunde " & ChrW(252) & "ber onlinebefunde.labor-staber.de bereit (Strg+O)", _
-			"Zuckerwerte aus LibreView, Dexcom Clarity, Glooko, YourLoops bzw. EasyView herunterladen (Strg+L, D, G, Y, E, Z)", _
-			"Accu-Chek Smart Pix (Strg+S Patient w" & ChrW(228) & "hlen, Strg+Umsch+S Patientenliste abgleichen)", _
-			"Patientenlaufzettel, Arztbrief usw. aus Dateilese.exe, FreeCommander " & ChrW(252) & "ber FCAufruf.exe (Strg+P, A, I)", _
-			"abgelegte PDFs wie DokimpKurz einordnen (Sicherheitskopie, Eintrag in die Datenbank quelle, Patientenordner)"]
-	; praxiseigene Werte: Beschriftung, Abschnitt, Schluessel (Ablage gilt fuer alle Portale)
-	Local $felder[11][3] = [["Ablageordner f" & ChrW(252) & "r heruntergeladene PDFs (leer: im Download-Ordner lassen)", "Labor", "Ablage"], _
-			["Einordnen: Ordner der Sicherheitskopien", "Dokumente", "Eingelesen"], _
-			["Einordnen: Ordner der Patientendokumente (darunter je Pat_id)", "Dokumente", "Dok"], _
-			["pdftotext.exe (Berichtszeitraum aus dem PDF lesen; leer: nicht)", "Allgemein", "PdfText"], _
-			["Tampermonkey als .xpi-Datei (leer: von addons.mozilla.org)", "Labor", "AddOn"], _
-			["Benutzerkennung LibreView (leer: die erste im Firefox gespeicherte)", "LibreView", "Kennung"], _
-			["Benutzerkennung Dexcom Clarity", "Dexcom", "Kennung"], _
-			["Benutzerkennung Glooko", "Glooko", "Kennung"], _
-			["Benutzerkennung YourLoops", "YourLoops", "Kennung"], _
-			["Benutzerkennung EasyView", "EasyView", "Kennung"], _
-			["Dexcom: PCs, die den Bericht als PDF speichern (durch Komma getrennt)", "Dexcom", "SpeichernAuf"]]
-	Local $eingabe[11]
-	Local $g = GUICreate("MOReiter einrichten", 900, 690)
+	; 21 Zeilen zu 28 Pixeln ab y = 52, darunter die Knoepfe
+	Local $g = GUICreate("MOReiter einrichten", 900, 700), $y = 52
 	GUICtrlCreateLabel("Was nutzt die Praxis, und welche Werte gelten hier? MOReiter schreibt das nach " & $IniPraxis & _
 			" (wieder aufzurufen mit ""MOReiter.exe Praxis"").", 15, 12, 870, 36)
-	For $i = 0 To 4
-		$kaestchen[$i] = GUICtrlCreateCheckbox($text[$i], 15, 52 + $i * 28, 870, 24)
-		If $an.Item($namen[$i]) Then GUICtrlSetState($kaestchen[$i], $GUI_CHECKED)
+	; Kaestchen (Name -> Control) und Eingabefelder (Name -> Control)
+	Local $k = ObjCreate("Scripting.Dictionary"), $e = ObjCreate("Scripting.Dictionary")
+	$k.Item("Labor") = PraxisKaestchen("Labor: das Labor stellt seine Befunde " & ChrW(252) & "ber onlinebefunde.labor-staber.de bereit (Strg+O)", 0, $y, $an.Item("Labor"))
+	$k.Item("Ablage") = PraxisKaestchen("heruntergeladene PDFs (Laborbefunde, Zuckerberichte) des Patienten in einen Ordner verschieben und umbenennen", 20, $y, $an.Item("Ablage"))
+	$e.Item("Ablage") = PraxisFeld("Ablageordner", 40, $y, PraxisAblage())
+	$k.Item("Einordnen") = PraxisKaestchen("dort weitergehend einordnen:", 40, $y, $an.Item("Einordnen"))
+	$k.Item("Sicherung") = PraxisKaestchen("Sicherheitskopie aufbewahren", 60, $y, $an.Item("Sicherung"))
+	$e.Item("Eingelesen") = PraxisFeld("Ordner der Sicherheitskopien (darunter je Jahr)", 80, $y, Einst("Dokumente", "Eingelesen", ""))
+	$k.Item("Datenbank") = PraxisKaestchen("in die Datenbank quelle eintragen (nur mit eigener quelle-Datenbank)", 80, $y, $an.Item("Datenbank"))
+	$k.Item("Patientenordner") = PraxisKaestchen("in einen Ordner je Patient verschieben (Pat_id; ohne Datenbank von Medical Office: Name, Geburtsdatum)", _
+			60, $y, $an.Item("Patientenordner"))
+	$e.Item("Dok") = PraxisFeld("Ordner der Patientendokumente", 80, $y, Einst("Dokumente", "Dok", ""))
+	$k.Item("PdfText") = PraxisKaestchen("Berichtszeitraum mit pdftotext.exe aus dem PDF lesen (f" & ChrW(252) & "r die Dateinamen der Zuckerberichte)", 40, $y, $an.Item("PdfText"))
+	$e.Item("PdfText") = PraxisFeld("Pfad f" & ChrW(252) & "r/von pdftotext.exe (fehlt sie, l" & ChrW(228) & "dt MOReiter sie von xpdfreader.com)", 60, $y, _
+			Einst("Allgemein", "PdfText", @ScriptDir & "\pdftotext.exe"))
+	$e.Item("AddOn") = PraxisFeld("Tampermonkey als .xpi-Datei (leer: von addons.mozilla.org)", 20, $y, Einst("Labor", "AddOn", ""))
+	$k.Item("Zucker") = PraxisKaestchen("Zuckerwerte aus LibreView, Dexcom Clarity, Glooko, YourLoops bzw. EasyView herunterladen (Strg+L, D, G, Y, E, Z)", 0, $y, $an.Item("Zucker"))
+	Local $portale[5] = ["LibreView", "Dexcom", "Glooko", "YourLoops", "EasyView"]
+	For $s In $portale
+		$e.Item("Kennung" & $s) = PraxisFeld("Benutzerkennung " & $s & " (leer: die erste im Firefox gespeicherte)", 20, $y, Einst($s, "Kennung", ""))
 	Next
-	For $i = 0 To 10
-		GUICtrlCreateLabel($felder[$i][0], 15, 200 + $i * 40, 470, 34)
-		$eingabe[$i] = GUICtrlCreateInput(Einst($felder[$i][1], $felder[$i][2], ""), 495, 197 + $i * 40, 390, 24)
-	Next
-	Local $ok = GUICtrlCreateButton("OK", 680, 648, 95, 30), $ab = GUICtrlCreateButton("Abbrechen", 790, 648, 95, 30)
+	$e.Item("SpeichernAuf") = PraxisFeld("Dexcom: PCs, die den Bericht als PDF speichern (durch Komma getrennt)", 20, $y, Einst("Dexcom", "SpeichernAuf", ""))
+	$k.Item("SmartPix") = PraxisKaestchen("Accu-Chek Smart Pix (Strg+S Patient w" & ChrW(228) & "hlen, Strg+Umsch+S Patientenliste abgleichen)", 0, $y, $an.Item("SmartPix"))
+	$k.Item("Laufzettel") = PraxisKaestchen("Patientenlaufzettel, Arztbrief usw. aus Dateilese.exe, FreeCommander " & ChrW(252) & "ber FCAufruf.exe (Strg+P, A, I)", 0, $y, $an.Item("Laufzettel"))
+	Local $ok = GUICtrlCreateButton("OK", 680, $y + 10, 95, 30), $ab = GUICtrlCreateButton("Abbrechen", 790, $y + 10, 95, 30)
+	PraxisGrau($k, $e)
 	GUISetState(@SW_SHOW, $g)
 	Local $erg = False
 	While 1
-		Switch GUIGetMsg()
+		Local $msg = GUIGetMsg()
+		Switch $msg
 			Case $GUI_EVENT_CLOSE, $ab
 				ExitLoop
 			Case $ok
-				For $i = 0 To 4
-					$an.Item($namen[$i]) = (BitAND(GUICtrlRead($kaestchen[$i]), $GUI_CHECKED) = $GUI_CHECKED)
+				For $n In $k.Keys
+					$an.Item($n) = PraxisAn($k.Item($n))
 				Next
-				Local $werte[11]
-				For $i = 0 To 10
-					$werte[$i] = StringStripWS(GUICtrlRead($eingabe[$i]), 3)
+				Local $w = ObjCreate("Scripting.Dictionary")
+				For $n In $e.Keys
+					$w.Item($n) = StringStripWS(GUICtrlRead($e.Item($n)), 3)
 				Next
-				$erg = PraxisSchreiben($an, $felder, $werte)
-				ExitLoop
+				$erg = PraxisSchreiben($an, $w)
+				If $erg Then ExitLoop
+			Case Else
+				If $msg > 0 Then PraxisGrau($k, $e)
 		EndSwitch
 	WEnd
 	GUIDelete($g)
 	Return $erg
+EndFunc
+
+; Kaestchen in der Praxis-Abfrage (eingerueckt um $x), $y rueckt weiter
+Func PraxisKaestchen($text, $x, ByRef $y, $an)
+	Local $c = GUICtrlCreateCheckbox($text, 15 + $x, $y, 870 - $x, 22)
+	If $an Then GUICtrlSetState($c, $GUI_CHECKED)
+	$y += 28
+	Return $c
+EndFunc
+
+; Beschriftung und Eingabefeld in einer Zeile
+Func PraxisFeld($text, $x, ByRef $y, $wert)
+	GUICtrlCreateLabel($text, 15 + $x, $y + 3, 480 - $x, 22)
+	Local $c = GUICtrlCreateInput($wert, 495, $y, 390, 22)
+	$y += 28
+	Return $c
+EndFunc
+
+Func PraxisAn($c)
+	Return BitAND(GUICtrlRead($c), $GUI_CHECKED) = $GUI_CHECKED And BitAND(GUICtrlGetState($c), $GUI_ENABLE) = $GUI_ENABLE
+EndFunc
+
+; grau, was von einem ausgeschalteten Kaestchen abhaengt (die Haken bleiben, gelten aber erst wieder mit dem Kaestchen)
+Func PraxisGrau($k, $e)
+	Local $portal = PraxisAn($k.Item("Labor")) Or PraxisAn($k.Item("Zucker"))
+	PraxisAktiv($k.Item("Ablage"), $portal)
+	Local $ablage = PraxisAn($k.Item("Ablage"))
+	PraxisAktiv($e.Item("Ablage"), $ablage)
+	PraxisAktiv($k.Item("Einordnen"), $ablage)
+	PraxisAktiv($k.Item("PdfText"), $ablage)
+	Local $einordnen = PraxisAn($k.Item("Einordnen"))
+	PraxisAktiv($k.Item("Sicherung"), $einordnen)
+	PraxisAktiv($k.Item("Patientenordner"), $einordnen)
+	Local $sicherung = PraxisAn($k.Item("Sicherung"))
+	PraxisAktiv($e.Item("Eingelesen"), $sicherung)
+	PraxisAktiv($k.Item("Datenbank"), $sicherung)
+	PraxisAktiv($e.Item("Dok"), PraxisAn($k.Item("Patientenordner")))
+	PraxisAktiv($e.Item("PdfText"), PraxisAn($k.Item("PdfText")))
+	PraxisAktiv($e.Item("AddOn"), $portal)
+	Local $zucker = PraxisAn($k.Item("Zucker"))
+	For $n In $e.Keys
+		If StringLeft($n, 7) = "Kennung" Or $n = "SpeichernAuf" Then PraxisAktiv($e.Item($n), $zucker)
+	Next
+EndFunc
+
+Func PraxisAktiv($c, $an)
+	If (BitAND(GUICtrlGetState($c), $GUI_ENABLE) = $GUI_ENABLE) <> $an Then GUICtrlSetState($c, $an ? $GUI_ENABLE : $GUI_DISABLE)
+EndFunc
+
+; gemeinsamer Ablageordner der Portale (der erste, der einen nennt)
+Func PraxisAblage()
+	Local $portale[6] = ["Labor", "LibreView", "Dexcom", "Glooko", "YourLoops", "EasyView"]
+	For $s In $portale
+		If Einst($s, "Ablage", "") <> "" Then Return Einst($s, "Ablage", "")
+	Next
+	Return ""
 EndFunc
 
 ; was gerade eingeschaltet ist (Dictionary Name -> True/False), aus allen INI-Dateien zusammen
@@ -4178,6 +4236,11 @@ Func PraxisStand()
 	$an.Item("SmartPix") = False
 	$an.Item("Laufzettel") = False
 	$an.Item("Einordnen") = (Einst("Dokumente", "Einordnen", "0") = "1")
+	$an.Item("Sicherung") = (Einst("Dokumente", "Sicherung", "1") = "1")
+	$an.Item("Datenbank") = (Einst("Dokumente", "Datenbank", "1") = "1")
+	$an.Item("Patientenordner") = (Einst("Dokumente", "Patientenordner", "1") = "1")
+	$an.Item("Ablage") = (PraxisAblage() <> "")
+	$an.Item("PdfText") = (Einst("Allgemein", "PdfText", "") <> "")
 	For $i = 0 To UBound($gAufrufe) - 1
 		Local $gr = PraxisGruppe("Aufrufe", $gAufrufe[$i][0], $gAufrufe[$i][3])
 		If $gr = "Zucker" Or $gr = "SmartPix" Or $gr = "Laufzettel" Then $an.Item($gr) = True
@@ -4188,6 +4251,10 @@ Func PraxisStand()
 	$an.Item("Labor") = False
 	$an.Item("Zucker") = False
 	$an.Item("Einordnen") = False
+	; die Datenbank quelle hat ausser der Praxis des Autors kaum jemand
+	$an.Item("Datenbank") = False
+	$an.Item("Ablage") = False
+	$an.Item("PdfText") = False
 	$an.Item("SmartPix") = FileExists(Einst("SmartPix", "Programm", "C:\AccuChek\SPIXSW\Accu-Chek Smart Pix Software.exe"))
 	Local $lz = False
 	For $i = 0 To UBound($gAufrufe) - 1
@@ -4213,8 +4280,16 @@ Func PraxisGruppe($sektion, $k, $w)
 EndFunc
 
 ; schreibt die Auswahl nach MOReiter-Praxis.ini: abgeschaltete Gruppen als leere Werte, eingeschaltete ohne eigenen
-; Eintrag (dann gelten die Vorgaben); praxiseigene Werte, leere werden entfernt (dann gelten die Vorgaben)
-Func PraxisSchreiben($an, ByRef $felder, ByRef $werte)
+; Eintrag (dann gelten die Vorgaben); praxiseigene Werte, leere werden entfernt (dann gelten die Vorgaben); fehlt
+; pdftotext.exe, wird sie zuerst geholt; False (Fenster bleibt offen), wenn etwas fehlt
+Func PraxisSchreiben($an, $w)
+	If $an.Item("Ablage") And $w.Item("Ablage") = "" Then Return PraxisFehlt("Bitte den Ablageordner angeben.")
+	If $an.Item("Sicherung") And $w.Item("Eingelesen") = "" Then Return PraxisFehlt("Bitte den Ordner der Sicherheitskopien angeben.")
+	If $an.Item("Patientenordner") And $w.Item("Dok") = "" Then Return PraxisFehlt("Bitte den Ordner der Patientendokumente angeben.")
+	If $an.Item("PdfText") Then
+		If $w.Item("PdfText") = "" Then Return PraxisFehlt("Bitte den Pfad f" & ChrW(252) & "r pdftotext.exe angeben.")
+		If Not FileExists($w.Item("PdfText")) And Not PdfTextHolen($w.Item("PdfText")) Then Return False
+	EndIf
 	$an.Item("Portale") = ($an.Item("Labor") Or $an.Item("Zucker"))
 	; Tasten aus den Vorgaben und der Praxis-INI (deren eigene Befehle bleiben, solange ihre Gruppe an ist)
 	Local $quelle[2] = [$IniVorgaben, $IniPraxis]
@@ -4238,23 +4313,63 @@ Func PraxisSchreiben($an, ByRef $felder, ByRef $werte)
 		ElseIf IniRead($IniPraxis, $s, "Url", Chr(1)) = "" Then
 			IniDelete($IniPraxis, $s, "Url")
 		EndIf
+		; ein Ablageordner fuer alle Portale
+		PraxisWert($s, "Ablage", $an.Item("Ablage") ? $w.Item("Ablage") : "")
+		If $s <> "Labor" Then PraxisWert($s, "Kennung", $w.Item("Kennung" & $s))
 	Next
-	IniWrite($IniPraxis, "Dokumente", "Einordnen", $an.Item("Einordnen") ? "1" : "0")
-	For $i = 0 To UBound($werte) - 1
-		; die Ablage gilt fuer alle Portale
-		Local $ziele[1] = [$felder[$i][1]]
-		If $felder[$i][2] = "Ablage" Then $ziele = $portale
-		For $s In $ziele
-			If $werte[$i] = "" Then
-				IniDelete($IniPraxis, $s, $felder[$i][2])
-			ElseIf Not IniWrite($IniPraxis, $s, $felder[$i][2], $werte[$i]) Then
-				MsgBox(16, "MOReiter", $IniPraxis & " nicht beschreibbar")
-				Return False
-			EndIf
-		Next
-	Next
+	IniWrite($IniPraxis, "Dokumente", "Einordnen", ($an.Item("Ablage") And $an.Item("Einordnen") And _
+			($an.Item("Sicherung") Or $an.Item("Patientenordner"))) ? "1" : "0")
+	IniWrite($IniPraxis, "Dokumente", "Sicherung", $an.Item("Sicherung") ? "1" : "0")
+	IniWrite($IniPraxis, "Dokumente", "Datenbank", $an.Item("Datenbank") ? "1" : "0")
+	IniWrite($IniPraxis, "Dokumente", "Patientenordner", $an.Item("Patientenordner") ? "1" : "0")
+	PraxisWert("Dokumente", "Eingelesen", $w.Item("Eingelesen"))
+	PraxisWert("Dokumente", "Dok", $w.Item("Dok"))
+	PraxisWert("Allgemein", "PdfText", ($an.Item("Ablage") And $an.Item("PdfText")) ? $w.Item("PdfText") : "")
+	PraxisWert("Labor", "AddOn", $w.Item("AddOn"))
+	PraxisWert("Dexcom", "SpeichernAuf", $w.Item("SpeichernAuf"))
+	If Not FileExists($IniPraxis) Then Return PraxisFehlt($IniPraxis & " nicht beschreibbar")
 	MsgBox(64, "MOReiter", "Gespeichert in " & $IniPraxis & ".", 10)
 	Return True
+EndFunc
+
+; Wert in die Praxis-INI schreiben, ein leerer entfernt ihn (dann gelten die Vorgaben)
+Func PraxisWert($s, $k, $v)
+	If $v = "" Then Return IniDelete($IniPraxis, $s, $k)
+	Return IniWrite($IniPraxis, $s, $k, $v)
+EndFunc
+
+Func PraxisFehlt($txt)
+	MsgBox(48, "MOReiter", $txt)
+	Return False
+EndFunc
+
+; pdftotext.exe aus den Xpdf-Werkzeugen (xpdfreader.com, [Allgemein] PdfTextZip=) holen und nach $ziel legen; klappt das
+; nicht, die Downloadseite oeffnen
+Func PdfTextHolen($ziel)
+	Local $url = Einst("Allgemein", "PdfTextZip", "https://dl.xpdfreader.com/xpdf-tools-win-4.06.zip")
+	Local $tmp = @TempDir & "\MOReiter-xpdf", $zip = $tmp & ".zip"
+	ToolTip("Lade pdftotext.exe von " & $url & " ...", Default, Default, "MOReiter")
+	DirRemove($tmp, 1)
+	DirCreate($tmp)
+	Local $ok = (InetGet($url, $zip, 1) > 0)
+	If $ok Then $ok = (RunWait(@ComSpec & ' /c tar -xf "' & $zip & '" -C "' & $tmp & '"', "", @SW_HIDE) = 0)
+	Local $exe = ""
+	If $ok Then
+		Local $such = FileFindFirstFile($tmp & "\xpdf-tools-win-*")
+		If $such <> -1 Then
+			$exe = $tmp & "\" & FileFindNextFile($such) & (@OSArch = "X86" ? "\bin32" : "\bin64") & "\pdftotext.exe"
+			FileClose($such)
+		EndIf
+		$ok = FileExists($exe)
+	EndIf
+	If $ok Then $ok = FileCopy($exe, $ziel, 1 + 8)
+	ToolTip("")
+	FileDelete($zip)
+	DirRemove($tmp, 1)
+	If $ok Then Return True
+	ShellExecute("https://www.xpdfreader.com/download.html")
+	Return PraxisFehlt("pdftotext.exe lie" & ChrW(223) & " sich nicht herunterladen. Bitte die ""Xpdf command line tools"" f" & ChrW(252) & "r Windows " & _
+			"von der eben ge" & ChrW(246) & "ffneten Seite holen und pdftotext.exe (aus bin64) nach " & $ziel & " legen, oder einen anderen Pfad angeben.")
 EndFunc
 
 ; Abschnitte "{WENN Merkmal}" ... "{ENDE Merkmal}" (je auf eigener Zeile) behalten oder weglassen
@@ -4798,18 +4913,28 @@ Func PortalDrucken($s, $hFF, $nach, $vor, $geb, $zeitraum)
 	Return True
 EndFunc
 
-; [Portal] Einordnen=1 (sonst [Dokumente] Einordnen=): ein abgelegtes PDF gleich wie mit DokimpKurz weiter
-; einordnen: Sicherheitskopie nach [Dokumente] Eingelesen=\Jahr, Eintrag in quelle (tmbrie, dokprotlist,
-; dokprotinh, dokprotvz; Mitarbeiter und Autor = PC-Name), dann nach [Dokumente] Dok=\Pat_id verschieben. Die
-; Patientennummer kommt vom Laufzettel-Link oder aus Medical Office (Name und Geburtsdatum eindeutig). Klappt etwas
-; nicht, bleibt die Datei in der Ablage (Hinweis, eine schon angelegte Sicherheitskopie wird wieder geloescht);
-; liefert den Pfad, unter dem die Datei jetzt liegt
+; [Portal] Einordnen=1 (sonst [Dokumente] Einordnen=): ein abgelegtes PDF weitergehend einordnen, in drei Stufen, die
+; [Dokumente] einzeln ein- und ausschaltet (fehlt der Schluessel, gilt 1):
+;   Sicherung=1         Sicherheitskopie nach Eingelesen=\Jahr (Jahr des Berichtsendes)
+;   Datenbank=1         Eintrag in quelle wie DokimpKurz (tmbrie, dokprotlist, dokprotinh, dokprotvz; Mitarbeiter und
+;                       Autor = PC-Name); nur mit Sicherung, der Eintrag verweist auf die Kopie
+;   Patientenordner=1   nach Dok=\Pat_id verschieben; ohne Patientennummer (keine Datenbank von Medical Office) nach
+;                       Dok=\Nachname, Vorname, TT.MM.JJJJ
+; Die Patientennummer kommt vom Laufzettel-Link oder aus Medical Office (Name und Geburtsdatum eindeutig). Klappt
+; etwas nicht, bleibt die Datei in der Ablage (Hinweis, eine schon angelegte Sicherheitskopie wird bei einem
+; Datenbankfehler wieder geloescht); liefert den Pfad, unter dem die Datei jetzt liegt
 Func DokEinordnen($s, $datei, $nach, $vor, $geb, $zeitraum, $pid = "")
 	If Einst($s, "Einordnen", Einst("Dokumente", "Einordnen", "0")) <> "1" Then Return $datei
+	Local $sich = (Einst("Dokumente", "Sicherung", "1") = "1"), $ord = (Einst("Dokumente", "Patientenordner", "1") = "1")
+	Local $db = $sich And (Einst("Dokumente", "Datenbank", "1") = "1")
 	If $pid = "" Then $pid = $gLinkPid
-	If $pid = "" Then
-		$pid = MOPatNr($nach, $vor, $geb)
-		If @error Then Return DokNicht($s, $datei, "Patientennummer nicht eindeutig (" & $pid & ")")
+	If $pid = "" And ($db Or $ord) Then
+		Local $nr = MOPatNr($nach, $vor, $geb)
+		If Not @error Then
+			$pid = $nr
+		ElseIf $db Then
+			Return DokNicht($s, $datei, "Patientennummer nicht eindeutig (" & $nr & ")")
+		EndIf
 	EndIf
 	Local $name = StringRegExpReplace($datei, "^.*\\", ""), $von = "", $bis = ""
 	; Zeitraum des Berichts: sein Ende ist das Quelldatum und bestimmt das Jahr der Sicherheitskopie
@@ -4818,19 +4943,28 @@ Func DokEinordnen($s, $datei, $nach, $vor, $geb, $zeitraum, $pid = "")
 		$von = $zr[2] & "-" & $zr[1] & "-" & $zr[0]
 		$bis = $zr[5] & "-" & $zr[4] & "-" & $zr[3]
 	EndIf
-	Local $svz = StringRegExpReplace(Einst("Dokumente", "Eingelesen", "p:\eingelesen"), "\\$", "") & "\" & (($bis = "") ? @YEAR : StringLeft($bis, 4))
-	Local $dvz = StringRegExpReplace(Einst("Dokumente", "Dok", "p:\dok"), "\\$", "") & "\" & $pid
-	If Not FileExists($svz) Then DirCreate($svz)
-	If Not FileExists($dvz) Then DirCreate($dvz)
-	Local $kopie = AblageName($svz, $name)
-	If Not FileCopy($datei, $kopie) Then Return DokNicht($s, $datei, "Sicherheitskopie nach " & $svz & " fehlgeschlagen")
-	Local $fehler = DokEintragen($s, $pid, $datei, $kopie, $svz, $nach, $vor, $geb, $von, $bis)
-	If $fehler <> "" Then
-		FileDelete($kopie)
-		Return DokNicht($s, $datei, $fehler)
+	Local $kopie = ""
+	If $sich Then
+		Local $svz = StringRegExpReplace(Einst("Dokumente", "Eingelesen", "p:\eingelesen"), "\\$", "") & "\" & (($bis = "") ? @YEAR : StringLeft($bis, 4))
+		If Not FileExists($svz) Then DirCreate($svz)
+		$kopie = AblageName($svz, $name)
+		If Not FileCopy($datei, $kopie) Then Return DokNicht($s, $datei, "Sicherheitskopie nach " & $svz & " fehlgeschlagen")
+		If $db Then
+			Local $fehler = DokEintragen($s, $pid, $datei, $kopie, $svz, $nach, $vor, $geb, $von, $bis)
+			If $fehler <> "" Then
+				FileDelete($kopie)
+				Return DokNicht($s, $datei, $fehler)
+			EndIf
+		EndIf
 	EndIf
+	If Not $ord Then Return $datei
+	; ohne Patientennummer ein Ordner je Patient nach Name und Geburtsdatum
+	Local $unter = ($pid <> "") ? $pid : StringStripWS(StringRegExpReplace($nach & ", " & $vor & ", " & $geb, '[\\/:*?"<>|]+', ""), 7)
+	Local $dvz = StringRegExpReplace(Einst("Dokumente", "Dok", "p:\dok"), "\\$", "") & "\" & $unter
+	If Not FileExists($dvz) Then DirCreate($dvz)
 	Local $ziel = AblageName($dvz, $name)
-	If Not FileMove($datei, $ziel) Then Return DokNicht($s, $datei, "Verschieben nach " & $dvz & " fehlgeschlagen (eingetragen und gesichert ist sie)")
+	If Not FileMove($datei, $ziel) Then Return DokNicht($s, $datei, "Verschieben nach " & $dvz & " fehlgeschlagen" & _
+			($sich ? " (gesichert" & ($db ? " und eingetragen" : "") & " ist sie)" : ""))
 	Return $ziel
 EndFunc
 
