@@ -13,11 +13,11 @@ Strg+F sucht, Enter/F3 weiter, Bild auf/ab und Strg+Pos1/Ende blättern, Strg+A 
 kopiert; mit Alt+Tab kann man daneben ausprobieren, Strg+Alt+F1 holt die Hilfe wieder nach vorn.
 
 
-REITER UND HAUPTFENSTER
+REITER (ANWENDERANSICHT) UND HAUPTFENSTER
 ----------------------------------------------------------------------------------------------------
-Strg+Alt+K          Reiter "Kartei"; ist die Kartei schon aktiv: "Krankenblatt"
-Strg+Alt+L          Reiter "Krankenblatt"
-Strg+Alt+P          Reiter "ePA"; ist die ePA schon aktiv: "ePAAbr"
+Strg+Alt+K          Reiter (Anwenderansicht) "Kartei"; ist die Kartei schon aktiv: "Krankenblatt"
+Strg+Alt+L          Reiter (Anwenderansicht) "Krankenblatt"
+Strg+Alt+P          Reiter (Anwenderansicht) "ePA"; ist die ePA schon aktiv: "ePAAbr"
 Strg+Alt+U          ("unten") die Liste im Container Karteikarte aktivieren, so dass Pfeiltasten usw.
                     dort wirken; ist keine sichtbar, vorher zum Krankenblatt wechseln
 Strg+Alt+T          aus jedem Programm: die Termine des Patienten zeigen, solange Strg+Alt+T gehalten
@@ -37,10 +37,10 @@ Strg+Alt+Esc        MOReiter neu starten, z.B. wenn es in einer Aufgabe hängt u
 Strg+Alt+F1         diese Hilfe (die Hilfe von Medical Office selbst gibt es weiter mit Strg+F1)
 
 
-FILTER DER KARTEI
+KRANKENBLATTFILTER (vorgegebenerweise kalibriert für 'Position Filter-Registrierkartenreiter links')
 ----------------------------------------------------------------------------------------------------
 Strg+Alt+ ^ 1 2 3 4 5 6 7 8 9 0 ß ´ F2 F3 ... F12
-                    wechselt zur Kartei und wählt dort den 1., 2., ... 24. Filter links
+                    wechselt zum zweiten Anwenderfenster (z.B. 'Kartei') und wählt dort den 1., 2., ... 24. Filter links
                     ("Alle Einträge", "Dateien", "RR Gewicht", ...)
 Strg+Alt + Ziffernblock
                     Strg+Alt halten und auf dem Ziffernblock eine Nummer (bis 3 Stellen) tippen; beim
@@ -278,7 +278,7 @@ AUFRUF VON AUSSEN (z.B. aus einem eigenen Programm)
 ----------------------------------------------------------------------------------------------------
 MOReiter.exe Kartei | Krankenblatt | ePA | ePAAbr | Wechsel | ePAWechsel
 MOReiter.exe LetztePatienten | Menue | Unten | Labor
-MOReiter.exe Filter n          n-ter Filter der Kartei
+MOReiter.exe Filter n          n-ter Filter des zweiten Anwenderfensters (z.B. 'Kartei')
 MOReiter.exe Diagnose n        n-te Diagnose-Kurzwahl
 MOReiter.exe Praxis            fragt, was die Praxis nutzt (Labor, Zuckerportale, Smart Pix, Patienten-
                                laufzettel, Einordnen) und welche praxiseigenen Werte gelten (Ablage, Kennungen,
