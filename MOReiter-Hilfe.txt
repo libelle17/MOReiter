@@ -7,8 +7,8 @@ noch nicht, startet jedes Tastenkürzel die Zentrale (medoff.exe) zum Anmelden.
 
 Alle Kürzel verwenden die LINKE Alt-Taste zusammen mit Strg. AltGr bleibt unberührt, so dass
 AltGr+2 3 7 8 9 0 ß weiterhin ² ³ { [ ] } \ liefern.
-~Diese Hilfe zeigt nur, was auf diesem PC eingerichtet ist (Labor, Zuckerportale, Smart Pix,
-Patientenlaufzettel; einzustellen mit Einstellungen.bat bzw. "MOReiter.exe Praxis").
+~Diese Hilfe zeigt die enthaltene Medical-Office-Steuerung und ggf. weitere aktivierte Funktionen von MOReiter
+(z.B. Laborbefund- und Zuckerverlaufsabruf von Onlineportalen oder Smart Pix lokal, aktivierbar mit Einstellungen.bat).
 
 
 TASTEN-EINBLENDUNG

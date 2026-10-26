@@ -5734,6 +5734,9 @@ Func Hilfe()
 		_GUICtrlRichEdit_SetSel($gHilfeText, $farbe[$i][0], $farbe[$i][1], True)
 		_GUICtrlRichEdit_SetCharBkColor($gHilfeText, 0xF7E8F0)
 	Next
+	; SetSel(..., True) hat die Markierung mit EM_HIDESELECTION dauerhaft versteckt (dann ging weder Strg+A noch
+	; Umschalt+Pfeil sichtbar): wieder einschalten
+	_SendMessage($gHilfeText, 0x043F, False) ; EM_HIDESELECTION
 	_GUICtrlRichEdit_SetSel($gHilfeText, 0, 0)
 	_GUICtrlRichEdit_ScrollToCaret($gHilfeText)
 	$gHilfePos = 0
