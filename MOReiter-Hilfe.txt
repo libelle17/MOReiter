@@ -19,20 +19,17 @@ Hochladen, Karteikarte, Diagnose-Kurzwahlen, Tagesübersicht, Briefversand).
 
 
 REITER (ANWENDERANSICHT) UND HAUPTFENSTER
+~Im Folgenden gehen wir als Beispiel von vier Anwenderansichten aus: Krankenblatt, Kartei, ePA, ePAAbr (es geht auch
+mit anderen Namen).
 ----------------------------------------------------------------------------------------------------
-Strg+Alt+K          Reiter (Anwenderansicht) "Kartei"; ist die Kartei schon aktiv: "Krankenblatt"
 Strg+Alt+L          Reiter (Anwenderansicht) "Krankenblatt"
+Strg+Alt+K          Reiter (Anwenderansicht) "Kartei"; ist die Kartei schon aktiv: "Krankenblatt"
 Strg+Alt+P          Reiter (Anwenderansicht) "ePA"; ist die ePA schon aktiv: "ePAAbr"
 Strg+Alt+U          ("unten") die Liste im Container Karteikarte aktivieren, so dass Pfeiltasten usw.
                     dort wirken; ist keine sichtbar, vorher zum Krankenblatt wechseln
 Strg+Alt+T          aus jedem Programm: die Termine des Patienten zeigen, solange Strg+Alt+T gehalten
                     wird (Medical Office nach vorn, F6, Alt+T; beim Loslassen F6 und zurück ins
                     vorige Programm)
-Strg+Alt+D          Explorer mit dem Dokumentenordner des Patienten (p:\dok\<Pat_id>), in jedem Fenster
-                    von Medical Office (wie der Auftrag "Datei" im Krankenblatt)
-{WENN Laufzettel}
-                    und im Patientenlaufzettel
-{ENDE Laufzettel}
 Strg+Alt+Z          Liste der zuletzt geöffneten Patienten (Pfeil rechts neben der Patientensuche)
 Strg+Alt+Leertaste  Hauptmenü (drei Striche links oben)
 Strg+Alt+H          in der markierten Zeile der Karteikarte den hellblauen Pfeil nach oben anklicken
@@ -41,25 +38,39 @@ Strg+Alt+H          in der markierten Zeile der Karteikarte den hellblauen Pfeil
 Strg+Alt+Esc        MOReiter neu starten, z.B. wenn es in einer Aufgabe hängt und nicht mehr reagiert
 Strg+Alt+F1         diese Hilfe bzw. holt sie wieder nach vorn (die Hilfe von Medical Office selbst gibt es weiter mit Strg+F1)
 
+Strg+Alt+D          Explorer mit einem Dokumentenordner des Patienten (z.B. p:\dok\<Pat_id>), in jedem
+                    Fenster von Medical Office und ggf. im Patientenlaufzettel
 
-KRANKENBLATTFILTER (vorgegebenerweise kalibriert für 'Position Filter-Registrierkarten-Reiter links')
+
+KRANKENBLATTFILTER (Filter-Registrierkarten-Reiter links oder unten) (bevor Sie hier alles lesen: s.o. -> Tasten-Einblendung!)
 ----------------------------------------------------------------------------------------------------
 Strg+Alt+ ^ 1 2 3 4 5 6 7 8 9 0 ß ´ F2 F3 ... F12
-                    wechselt zum zweiten Anwenderfenster (z.B. 'Kartei') und wählt dort den 1., 2., ... 24. Filter links
-                    ("Alle Einträge", "Dateien", "RR Gewicht", ...)
+                    wechselt ggf. die Anwenderansicht (z.B. 'Kartei') und wählt dort den 1., 2., ... 24.
+                    Filter (links von oben nach unten bzw. unten von links nach rechts; unten nur die
+                    sichtbaren Reiter) (z.B. "Alle Einträge", "Dateien", "RR Gewicht", ...)
+Strg+Alt + mehrere Ziffern der oberen Reihe
+                    ohne Ziffernblock: z.B. Strg+Alt halten und 1, 7 tippen: erst wird Filter 1 gewählt,
+                    mit der 7 dann Filter 17 (wie Ziffernblock 17).
+                    ~Bei Fernzugriff (Fernwartung, Remotedesktop) kommen Strg+Alt und die Ziffern der
+                    oberen Reihe oft nicht an, weil das Fernzugriffsprogramm sie für sich nimmt; dann den
+                    Ziffernblock versuchen (s.u.).
 Strg+Alt + Ziffernblock
                     Strg+Alt halten und auf dem Ziffernblock eine Nummer (bis 3 Stellen) tippen; beim
                     Loslassen wird der Filter mit dieser Nummer gewählt, auch jenseits von 24.
                     Gezählt wird ab 0 wie bei den Tasten oben: 0 = ^, 1-9 = 1-9, 10 = Taste 0,
                     11 = ß, 12 = ´, 13 = F2 ...
-Strg+Alt + mehrere Ziffern der oberen Reihe
-                    ohne Ziffernblock: z.B. Strg+Alt halten und 1, 7 tippen: erst wird Filter 1 gewählt,
-                    mit der 7 dann Filter 17 (wie Ziffernblock 17)
+~Um Folgendes sollten Sie sich normalerweise nicht zu kümmern brauchen:
+~Zeigt die offene Anwenderansicht Krankenblattfilter, so wählen die Filterkürzel dort, egal ob ihre
+Filter-Registrierkarten-Reiter links oder unten stehen (das erkennt MOReiter selbst). Aus einer Ansicht ohne Filter
+wechseln sie in die zuletzt so benutzte, bis dahin in die zweite (hier "Kartei"). Beides lässt sich mit
+Einstellungen.bat fest einstellen, sonst unter [Filter] mit Ansicht=2 und Lage=links bzw. Lage=unten in
+MOReiter-Praxis.ini oder, nur für diesen PC, in %APPDATA%\MOReiter\MOReiter.ini. Gibt es weniger
+Anwenderansichten, gilt die letzte.
 
 
 DIAGNOSEERFASSUNG
 ----------------------------------------------------------------------------------------------------
-Ist das Fenster "Diagnoseerfassung" aktiv, wählen dieselben Tasten (^ 1 2 ... F12, Ziffernblock,
+Ist das Fenster "Diagnoseerfassung" aktiv, so wählen dieselben Tasten (^ 1 2 ... F12, Ziffernblock,
 Ziffernfolgen) statt der Filter die Diagnose-Kurzwahl-Knöpfe rechts: erst die linke Spalte von oben
 nach unten, dann die nächste. Hier wird bei Ziffernfolgen erst beim Loslassen gewählt.
 Die Knöpfe werden bei jedem Druck am Bildschirm gesucht, Kalibrieren ist nicht nötig.
@@ -86,18 +97,19 @@ Strg+Alt darf zwischen zwei Tasten gehalten bleiben, z.B. für E und dann V.
 
 KALIBRIEREN (nur nötig, wenn ein Klick daneben geht)
 ----------------------------------------------------------------------------------------------------
-Strg+Alt+Umsch+K / L / P / A
-                    Maus auf den Reiter "Kartei" / "Krankenblatt" / "ePA" / "ePAAbr" halten und drücken
-Strg+Alt+Umsch+^    Maus auf den ersten Filter ("Alle Einträge") halten und drücken
+Strg+Alt+Umsch+L / K / P / A
+                    Maus auf den Reiter "Krankenblatt" / "Kartei" / "ePA" / "ePAAbr" halten und drücken
+Strg+Alt+Umsch+^    Maus auf den ersten Filter ("Alle Einträge") halten und drücken (Reiter links und unten
+                    getrennt gespeichert; unten genügt das, die übrigen Reiter sucht MOReiter selbst)
 Strg+Alt+Umsch+ eine andere Filtertaste (z.B. F12)
-                    Maus auf diesen Filter halten und drücken: ergibt den Zeilenabstand
+                    Filter links: Maus auf diesen Filter halten und drücken: ergibt den Zeilenabstand
 Strg+Alt+Umsch+A    in der Tagesübersicht: Maus auf die Spalte "Bereich" halten und drücken
 Strg+Alt+Umsch+D    Liste aller Controls im aktiven Fenster in die Zwischenablage und nach
                     %APPDATA%\MOReiter\Fenster.txt (zum Einrichten neuer Tasten)
 
 
 {FARBE}
-ZUSATZFUNKTIONEN (farbig hinterlegt; nur, was in dieser Praxis eingerichtet ist)
+ZUSATZFUNKTIONEN (farbig hinterlegt; beschrieben werden nur die, die in dieser Praxis eingerichtet sind)
 ====================================================================================================
 
 {WENN Laufzettel}
@@ -300,9 +312,13 @@ gilt der eingebaute Wert. Alle drei haben denselben Aufbau; Kalibrieren schreibt
                                  Anmeldeskript MOReiter startet)
               Control, AktivFarbe, Toleranz   Reiterleiste und Farbe des aktiven Reiters
 [Kartei], [Krankenblatt], [ePA], [ePAAbr]   X, Y   Lage der Reiter (schreibt das Kalibrieren)
-[Filter]      Reiter=Kartei      Reiter mit der Filterliste
+[Filter]      Ansicht=2          die wievielte Anwenderansicht (Reiter von links) die Krankenblattfilter hat
+                                 (ohne Eintrag: die zuletzt benutzte, gemerkt als AnsichtGemerkt in der eigenen INI)
+              Reiter=Kartei      nur falls die Reiter nicht zu erkennen sind: dieser kalibrierte Reiter
+              Lage=links         Filter-Registrierkarten-Reiter links oder unten (ohne Eintrag: selbst erkannt)
+              UntenY=10          unten: Reiterzeile in Pixeln unter der Karteikarte (schreibt das Kalibrieren)
               Warten=400         ms nach dem Reiterwechsel
-              X, Y, Abstand      Lage des ersten Filters und Zeilenabstand (schreibt das Kalibrieren)
+              X, Y, Abstand      links: Lage des ersten Filters und Zeilenabstand (schreibt das Kalibrieren)
 [Karteikarte] Art=Klick          Strg+Alt+U klickt in die markierte Zeile statt nur den Fokus zu setzen
 [Termine]     Warten=200         ms zwischen F6 und Alt+T
 [Labor]       Url=...            Adresse der Patientensuche; ohne sie ist der Laborabruf abgeschaltet

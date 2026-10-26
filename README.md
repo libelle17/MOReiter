@@ -3,8 +3,8 @@
 MOReiter läuft unauffällig im Hintergrund (Symbol im Infobereich der Taskleiste) und bedient
 Medical Office per Tastatur, wo es sonst nur die Maus gibt, zum Beispiel:
 
-- Reiter wechseln: Strg+Alt+K (Kartei/Krankenblatt), Strg+Alt+L (Krankenblatt), Strg+Alt+P (ePA/ePAAbr)
-- Filter der Kartei und Diagnose-Kurzwahl: Strg+Alt+1, 2, 3 … bzw. Ziffernblock
+- Reiter wechseln: Strg+Alt+L (Krankenblatt), Strg+Alt+K (Kartei/Krankenblatt), Strg+Alt+P (ePA/ePAAbr)
+- Krankenblattfilter (Filter-Reiter links oder unten) und Diagnose-Kurzwahl: Strg+Alt+1, 2, 3 … bzw. Ziffernblock
 - Termine des Patienten zeigen, solange Strg+Alt+T gehalten wird – aus jedem Programm
 - Tagesübersicht: Strg+Alt+A hakt die markierte offene Aufgabe ab
 - Briefversand, ePA-Hochladen, zuletzt geöffnete Patienten, Hauptmenü …

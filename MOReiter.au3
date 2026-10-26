@@ -101,6 +101,7 @@
 #include <StaticConstants.au3>
 #include <EditConstants.au3>
 #include <ButtonConstants.au3>
+#include <ComboConstants.au3>
 #include <GuiRichEdit.au3>
 Opt("MustDeclareVars", 1)
 Opt("WinTitleMatchMode", 4)
@@ -128,6 +129,19 @@ Const $defAktivFarbe = 0xD2E2F7, $defToleranz = 12
 ; (geschaetzt aus einem Bildschirmfoto, genauer per Strg+Alt+Umsch+^ und z.B. Strg+Alt+Umsch+F12)
 Const $defFilterReiter = "Kartei", $defFilterX = 46, $defFilterY = 83, $defFilterAbstand = 29
 Const $defFilterWarten = 400 ; ms nach dem Reiterwechsel, bis die Filterliste steht
+; Filter-Registrierkarten-Reiter unten ([Filter] Lage=unten, in Medical Office einstellbar: links oder unten): Mitte
+; der Reiterzeile unter dem unteren Rand der Karteikarte (geschaetzt aus einem Bildschirmfoto, genauer per
+; Strg+Alt+Umsch+^); die Reiter selbst sucht MOReiter jedes Mal am Bildschirm, ihre Breite haengt an der Beschriftung
+Const $defFilterLage = "auto", $defFilterUntenY = 10
+; die wievielte Anwenderansicht (Reiter oben) die Krankenblattfilter hat ([Filter] Ansicht=, Vorgabe auto: die zuletzt
+; offene, die Filter zeigte; bis dahin die zweite); deren Reiter werden beim ersten
+; Gebrauch am Bildschirm gesucht und gemerkt, solange die Reiterleiste gleich bleibt
+Const $defFilterAnsicht = "auto", $defFilterAnsichtZahl = 2
+Global $gAnsichten = 0, $gAnsichtenFuer = ""
+; bei Lage=auto: erkannte Lage der Filter-Reiter ("links"/"unten", "" = noch nicht erkannt)
+Global $gFilterLage = ""
+; was FilterLageErkennen zuletzt gesehen hat (fuers Protokoll, wenn ein Filterkuerzel die Ansicht wechselt)
+Global $gFilterInfo = ""
 ; Tagesuebersicht (gemessen 28.9.26, Pixel relativ zur Liste): Spalten "Bereich" und "Name",
 ; farbige Randspalte links, Kopfzeile, Zeilenhoehe, Farbe des eingedrueckten Knopfs "Offene To-Dos"
 Const $TagesKlasse = "TfrmTagesUebersicht"
@@ -771,7 +785,19 @@ EndFunc
 Func FilterPositionen($hWnd, ByRef $pos)
 	Local $hCtrl = ControlGetHandle($hWnd, "", Einst("Allgemein", "Control", $defCtrl))
 	If @error Or Not BitAND(WinGetState($hCtrl), 2) Then Return 0
-	If Not ReiterAktiv(Einst("Filter", "Reiter", $defFilterReiter), $hWnd, $hCtrl) Then Return 0
+	; nur in einer Anwenderansicht, die gerade Filter zeigt
+	Local $hier = FilterHier($hWnd, $hCtrl)
+	If $hier = "" Then Return 0
+	If $hier = "unten" Then
+		; Filter-Reiter unten: das Schildchen mitten auf den Reiter
+		Local $uy = 0
+		Local $mitten = FilterUntenReiter($hWnd, $uy)
+		If Not IsArray($mitten) Then Return 0
+		For $i = 0 To UBound($mitten) - 1
+			PosDazu($pos, $mitten[$i], $uy, NummerText($i))
+		Next
+		Return UBound($mitten)
+	EndIf
 	Local $p = WinGetPos($hCtrl)
 	If @error Then Return 0
 	Local $x = $p[0] + Int(Einst("Filter", "X", $defFilterX))
@@ -4144,8 +4170,8 @@ Func PraxisEinrichten()
 	If Not FileExists($IniVorgaben) Then Return PraxisFehlt($IniVorgaben & " fehlt und l" & ChrW(228) & "sst sich nicht anlegen. Bitte aus dem Repo " & _
 			"wiederherstellen (https://github.com/libelle17/MOReiter), sonst lassen sich Labor, Zuckerportale, Smart Pix und Laufzettel nicht einschalten.")
 	Local $an = PraxisStand()
-	; 24 Zeilen zu 28 Pixeln ab y = 52, darunter die Knoepfe
-	Local $g = GUICreate("MOReiter einrichten", 900, 790), $y = 52
+	; 25 Zeilen zu 28 Pixeln ab y = 52, darunter die Knoepfe
+	Local $g = GUICreate("MOReiter einrichten", 900, 818), $y = 52
 	GUICtrlCreateLabel("Was nutzt die Praxis, und welche Werte gelten hier? MOReiter schreibt das nach " & $IniPraxis & _
 			" (wieder aufzurufen mit ""MOReiter.exe Praxis"").", 15, 12, 870, 36)
 	; Kaestchen (Name -> Control) und Eingabefelder (Name -> Control)
@@ -4180,6 +4206,16 @@ Func PraxisEinrichten()
 	Next
 	$k.Item("SmartPix") = PraxisKaestchen("Accu-Chek Smart Pix (Strg+S Patient w" & ChrW(228) & "hlen, Strg+Umsch+S Patientenliste abgleichen)", 0, $y, $an.Item("SmartPix"))
 	$k.Item("Laufzettel") = PraxisKaestchen("Patientenlaufzettel, Arztbrief usw. aus Dateilese.exe, FreeCommander " & ChrW(252) & "ber FCAufruf.exe (Strg+P, A, I)", 0, $y, $an.Item("Laufzettel"))
+	; Krankenblattfilter: Anwenderansicht (Reiter) und Lage der Filter-Registrierkarten-Reiter
+	GUICtrlCreateLabel("Krankenblattfilter (Strg+Alt+^ 1 2 ...): Anwenderansicht Nr. (von links)", 15, $y + 3, 475, 22)
+	Local $filterAnsicht = GUICtrlCreateCombo("", 495, $y, 140, 200, $CBS_DROPDOWNLIST)
+	Local $ansicht = Einst("Filter", "Ansicht", $defFilterAnsicht)
+	GUICtrlSetData(-1, "automatisch|1|2|3|4|5|6|7|8|9", (StringIsDigit($ansicht) And Int($ansicht) > 0) ? Int($ansicht) : "automatisch")
+	GUICtrlCreateLabel("Filter-Reiter", 650, $y + 3, 90, 22)
+	Local $filterLage = GUICtrlCreateCombo("", 745, $y, 140, 200, $CBS_DROPDOWNLIST)
+	Local $lage = Einst("Filter", "Lage", $defFilterLage)
+	GUICtrlSetData(-1, "automatisch|links|unten", ($lage = "links" Or $lage = "unten") ? $lage : "automatisch")
+	$y += 28
 	$k.Item("Autostart") = PraxisKaestchen("MOReiter beim Anmelden starten (Verkn" & ChrW(252) & "pfung im Autostart-Ordner, legt Einrichten.bat an; " & _
 			"nicht n" & ChrW(246) & "tig, wo es ein Anmeldeskript startet)", 0, $y, $an.Item("Autostart"))
 	Local $ok = GUICtrlCreateButton("OK", 680, $y + 10, 95, 30), $ab = GUICtrlCreateButton("Abbrechen", 790, $y + 10, 95, 30)
@@ -4199,6 +4235,8 @@ Func PraxisEinrichten()
 				For $n In $e.Keys
 					$w.Item($n) = StringStripWS(GUICtrlRead($e.Item($n)), 3)
 				Next
+				$w.Item("FilterAnsicht") = GUICtrlRead($filterAnsicht)
+				$w.Item("FilterLage") = GUICtrlRead($filterLage)
 				$erg = PraxisSchreiben($an, $w)
 				If $erg Then ExitLoop
 			Case Else
@@ -4388,6 +4426,9 @@ Func PraxisSchreiben($an, $w)
 	; auch leer (= aus dem Internet) speichern, sonst stuende beim naechsten Mal wieder der Vorschlag im Feld
 	IniWrite($IniPraxis, "Labor", "AddOn", $w.Item("AddOn"))
 	PraxisWert("Dexcom", "SpeichernAuf", $w.Item("SpeichernAuf"))
+	PraxisWert("Filter", "Ansicht", ($w.Item("FilterAnsicht") = "automatisch") ? "" : $w.Item("FilterAnsicht"))
+	; automatisch ist die Vorgabe: kein eigener Eintrag
+	PraxisWert("Filter", "Lage", ($w.Item("FilterLage") = "automatisch") ? "" : $w.Item("FilterLage"))
 	If Not FileExists($IniPraxis) Then Return PraxisFehlt($IniPraxis & " nicht beschreibbar")
 	MsgBox(64, "MOReiter", "Gespeichert in " & $IniPraxis & ".", 10)
 	Return True
@@ -5783,9 +5824,9 @@ EndFunc
 ; Zeichen, Beschreibung ab Spalte 21, Fortsetzungszeilen mit 20 Leerzeichen eingerueckt; diese behalten den Einzug);
 ; Ueberschriften (vor ---- bzw. ====), Trennlinien, Tabellen (doppelte Leerzeichen im Text), anders eingerueckte
 ; Zeilen und Steuerzeilen ({...}) bleiben, wie sie sind; eine Zeile mit ~ am Anfang beginnt einen neuen Absatz
-; (ohne Leerzeile davor), das ~ faellt weg
+; (ohne Leerzeile davor), das ~ faellt weg; ebenso ~ nach dem Einzug in einem Tasten-Eintrag (neue eingerueckte Zeile)
 Func HilfeUmbrechen($txt, $n)
-	If $n < 60 Then Return StringRegExpReplace($txt, "(?m)^~", "")
+	If $n < 60 Then Return StringRegExpReplace($txt, "(?m)^( {20})?~", "$1")
 	Local $z = StringSplit($txt, @CRLF, 1 + 2), $erg = "", $i = 0, $anz = UBound($z)
 	Local $einzug = "                    "
 	While $i < $anz
@@ -5799,14 +5840,16 @@ Func HilfeUmbrechen($txt, $n)
 				$text = StringMid($l, 21)
 			ElseIf $art = "fort" Then
 				$kopf = $einzug
-				$text = StringMid($l, 21)
+				$text = StringRegExpReplace(StringMid($l, 21), "^~", "")
 			EndIf
 			$i += 1
 			While $i < $anz
-				Local $k = HilfeZeilenart($z[$i], ($i + 1 < $anz) ? $z[$i + 1] : "")
+				; mitten im Fliesstext ist keine Zeile eine Ueberschrift (die folgen auf eine Leerzeile), auch nicht die
+				; letzte vor ---- (Erlaeuterung zwischen Ueberschrift und Linie)
+				Local $k = HilfeZeilenart($z[$i], ($i + 1 < $anz And $art <> "fliess") ? $z[$i + 1] : "")
 				If $art = "fliess" And $k = "fliess" And StringLeft($z[$i], 1) <> "~" Then
 					$text &= " " & $z[$i]
-				ElseIf $art <> "fliess" And $k = "fort" Then
+				ElseIf $art <> "fliess" And $k = "fort" And StringMid($z[$i], 21, 1) <> "~" Then
 					$text &= " " & StringMid($z[$i], 21)
 				Else
 					ExitLoop
@@ -5828,7 +5871,9 @@ EndFunc
 
 ; "fliess", "taste", "fort" (Fortsetzung mit 20 Leerzeichen Einzug) oder "fest"
 Func HilfeZeilenart($l, $naechste)
-	If $l = "" Or StringLeft($l, 1) = "{" Or StringRegExp($naechste, "^(-{10}|={10})") Or StringRegExp($l, "^(-{10}|={10})") Then Return "fest"
+	If $l = "" Or StringLeft($l, 1) = "{" Or StringRegExp($l, "^(-{10}|={10})") Then Return "fest"
+	; Ueberschrift: Zeile vor ---- bzw. ====, ausser sie beginnt mit ~ (Absatz)
+	If StringRegExp($naechste, "^(-{10}|={10})") And StringLeft($l, 1) <> "~" Then Return "fest"
 	If StringRegExp($l, "^ {20}\S") Then Return StringInStr(StringMid($l, 21), "  ") ? "fest" : "fort"
 	If StringLeft($l, 1) = " " Then Return "fest"
 	If StringLen($l) > 21 And StringMid($l, 20, 1) = " " And StringMid($l, 21, 1) <> " " And StringInStr(StringLeft($l, 20), "  ") _
@@ -6692,10 +6737,26 @@ Func FilterWahl($i)
 	EinblendungWeg()
 	Local $hWnd, $hCtrl
 	If Not HolLeiste($hWnd, $hCtrl) Then Return False
-	Local $reiter = Einst("Filter", "Reiter", $defFilterReiter)
-	If Not ReiterAktiv($reiter, $hWnd, $hCtrl) Then
-		If Not Reiter($reiter) Then Return False
-		Sleep(Int(Einst("Filter", "Warten", $defFilterWarten)))
+	; zeigt die offene Anwenderansicht schon Filter, bleibt es bei ihr, sonst zur gemerkten bzw. eingestellten wechseln
+	Local $hier = FilterHier($hWnd, $hCtrl)
+	If $hier = "" Then
+		Local $ax, $ay
+		If Not FilterAnsicht($hWnd, $hCtrl, $ax, $ay) Then Return Meldung("Anwenderansicht der Filter nicht gefunden")
+		FilterProtokoll($hWnd, $hCtrl, $ax)
+		If Not PunktAktiv($hWnd, $hCtrl, $ax, $ay) Then
+			Local $p = WinGetPos($hCtrl)
+			If @error Then Return Meldung("Reiterleiste nicht gefunden")
+			If Not KlickPunkt($hWnd, $p[0] + $ax, $p[1] + $ay, "Reiterleiste verdeckt oder nicht sichtbar") Then Return False
+			Sleep(Int(Einst("Filter", "Warten", $defFilterWarten)))
+		EndIf
+	EndIf
+	Local $unten = ($hier = "") ? FilterUnten($hWnd) : ($hier = "unten")
+	If $unten Then
+		Local $uy = 0
+		Local $mitten = FilterUntenReiter($hWnd, $uy)
+		If Not IsArray($mitten) Then Return Meldung("Keine Filter-Reiter unter der Karteikarte gefunden")
+		If $i >= UBound($mitten) Then Return Meldung("Filter " & $i + 1 & " nicht sichtbar (nur " & UBound($mitten) & " Reiter zu sehen)")
+		Return KlickPunkt($hWnd, $mitten[$i], $uy, "Filter-Reiter verdeckt oder nicht sichtbar")
 	EndIf
 	Local $x = Int(Einst("Filter", "X", $defFilterX))
 	Local $y = Int(Einst("Filter", "Y", $defFilterY)) + $i * Number(Einst("Filter", "Abstand", $defFilterAbstand))
@@ -6708,6 +6769,193 @@ Func KlickBei($hWnd, $hCtrl, $x, $y)
 	Local $p = WinGetPos($hCtrl)
 	If @error Then Return Meldung("Reiterleiste nicht gefunden")
 	Return KlickPunkt($hWnd, $p[0] + $x, $p[1] + $y, "Filterliste verdeckt oder nicht sichtbar")
+EndFunc
+
+; liegen die Filter-Registrierkarten-Reiter unten (statt links)? [Filter] Lage=links bzw. unten, sonst (auto) beim
+; ersten Mal in der Anwenderansicht der Filter am Bildschirm erkannt und gemerkt (bis zum Neustart oder Kalibrieren)
+Func FilterUnten($hWnd)
+	Local $lage = Einst("Filter", "Lage", $defFilterLage)
+	If $lage = "links" Or $lage = "unten" Then Return $lage = "unten"
+	If $gFilterLage = "" Then $gFilterLage = FilterLageErkennen($hWnd)
+	Return $gFilterLage = "unten"
+EndFunc
+
+; "links", wenn links neben der Karteikarte eine weitere Liste steht (die Filterliste) bzw. an der Stelle des ersten
+; Filters links ([Filter] X, Y) ein Element links neben der Karteikarte liegt, "unten", wenn unter ihr mehrere Reiter
+; zu sehen sind, sonst "" (z.B. andere Anwenderansicht aktiv: dann beim naechsten Mal wieder)
+Func FilterLageErkennen($hWnd)
+	$gFilterInfo = "keine Karteikarte"
+	Local $hGrid = KarteiListe($hWnd)
+	If Not $hGrid Then Return ""
+	Local $g = WinGetPos($hGrid)
+	If @error Then Return ""
+	$gFilterInfo = "Karteikarte " & $g[0] & "," & $g[1] & " " & $g[2] & "x" & $g[3] & ", weitere Listen:"
+	Local $liste = _WinAPI_EnumChildWindows($hWnd, True)
+	If Not @error Then
+		For $i = 1 To $liste[0][0]
+			If $liste[$i][1] <> "TmoStringGrid" Or $liste[$i][0] = $hGrid Then ContinueLoop
+			Local $p = WinGetPos($liste[$i][0])
+			If @error Then ContinueLoop
+			$gFilterInfo &= " " & $p[0] & "," & $p[1] & " " & $p[2] & "x" & $p[3] & (_WinAPI_IsWindowVisible($liste[$i][0]) ? "" : "(unsichtbar)")
+			; links daneben und in der Hoehe ueberlappend
+			If $p[0] + $p[2] <= $g[0] + 5 And $p[1] < $g[1] + $g[3] And $p[1] + $p[3] > $g[1] Then Return "links"
+		Next
+	EndIf
+	; die Filterliste ist nicht immer ein TmoStringGrid: was liegt an der Stelle des ersten Filters links?
+	Local $hCtrl = ControlGetHandle($hWnd, "", Einst("Allgemein", "Control", $defCtrl))
+	Local $r = $hCtrl ? WinGetPos($hCtrl) : 0
+	If IsArray($r) Then
+		Local $px = $r[0] + Int(Einst("Filter", "X", $defFilterX)), $py = $r[1] + Int(Einst("Filter", "Y", $defFilterY))
+		Local $pt = DllStructCreate("int X;int Y")
+		DllStructSetData($pt, "X", $px)
+		DllStructSetData($pt, "Y", $py)
+		Local $h = _WinAPI_WindowFromPoint($pt)
+		Local $q = ($h And $h <> $hGrid And _WinAPI_GetAncestor($h, 2) = $hWnd) ? WinGetPos($h) : 0
+		$gFilterInfo &= "; beim 1. Filter links (" & $px & "," & $py & ") " & (IsArray($q) ? _WinAPI_GetClassName($h) & " " & _
+				$q[0] & "," & $q[1] & " " & $q[2] & "x" & $q[3] : "nichts")
+		If IsArray($q) Then
+			If $q[0] + $q[2] <= $g[0] + 5 And $px < $g[0] Then Return "links"
+			; oder der Container der Karteikarte zeichnet die Filter selbst (TmoOfficePager): dann steht links neben der
+			; Karteikarte ein Streifen von mindestens 60 Pixeln, und an der Stelle des ersten Filters steht Schrift
+			If $q[0] < $g[0] And $q[0] + $q[2] > $g[0] And $g[0] - $q[0] >= 60 And $px > $q[0] And $px < $g[0] Then
+				Local $schrift = ReiterSuchen($q[0] + 2, $py - 4, $g[0] - 2, $py + 4, 0)
+				$gFilterInfo &= ", Schrift dort: " & (IsArray($schrift) ? "ja" : "nein")
+				If IsArray($schrift) Then Return "links"
+			EndIf
+		EndIf
+	EndIf
+	Local $y = 0
+	Local $mitten = FilterUntenReiter($hWnd, $y)
+	$gFilterInfo &= "; unten bei y=" & $y & " " & (IsArray($mitten) ? UBound($mitten) : 0) & " Reiter"
+	If IsArray($mitten) And UBound($mitten) >= 2 Then Return "unten"
+	Return ""
+EndFunc
+
+; Filter-Reiter unten: Bildschirm-X der Mitten aller sichtbaren Reiter, $y (Bildschirm) ihre Zeile (9 Zeilen um $y
+; werden abgesucht); rechts bleiben 30 Pixel fuer die Blaetterpfeile frei; 0 ohne sichtbare Karteikarte
+Func FilterUntenReiter($hWnd, ByRef $y)
+	Local $hGrid = KarteiListe($hWnd)
+	If Not $hGrid Then Return 0
+	Local $g = WinGetPos($hGrid)
+	If @error Then Return 0
+	$y = $g[1] + $g[3] + Int(Einst("Filter", "UntenY", $defFilterUntenY))
+	Return ReiterSuchen($g[0], $y - 4, $g[0] + $g[2] - 30, $y + 4, 0)
+EndFunc
+
+; Reiter am Bildschirm: Bildschirm-X der Mitten aller Beschriftungen im Rechteck $x1,$y1 - $x2,$y2 (dunkle Pixel);
+; Luecken ab 7 Pixeln trennen die Reiter (Wortabstaende sind kleiner), eine Luecke ueber $schluss Pixel beendet die
+; Reihe (dahinter liegen z.B. Symbole, 0: nie); 0, wenn keine da sind
+Func ReiterSuchen($x1, $y1, $x2, $y2, $schluss)
+	If Not BildLesen($x1, $y1, $x2, $y2) Then Return 0
+	Local $mitten[0], $anfang = -1, $ende = -1
+	For $x = $x1 To $x2
+		Local $dunkel = False
+		For $yy = $y1 To $y2
+			Local $f = BildFarbe($x, $yy)
+			If $f >= 0 And BitAND($f, 0xFF) + BitAND(BitShift($f, 8), 0xFF) + BitAND(BitShift($f, 16), 0xFF) < 360 Then
+				$dunkel = True
+				ExitLoop
+			EndIf
+		Next
+		If Not $dunkel Then ContinueLoop
+		If $anfang >= 0 And $schluss > 0 And $x - $ende > $schluss Then ExitLoop
+		If $anfang >= 0 And $x - $ende >= 7 Then
+			ReDim $mitten[UBound($mitten) + 1]
+			$mitten[UBound($mitten) - 1] = Int(($anfang + $ende) / 2)
+			$anfang = -1
+		EndIf
+		If $anfang < 0 Then $anfang = $x
+		$ende = $x
+	Next
+	If $anfang >= 0 Then
+		ReDim $mitten[UBound($mitten) + 1]
+		$mitten[UBound($mitten) - 1] = Int(($anfang + $ende) / 2)
+	EndIf
+	If UBound($mitten) = 0 Then Return 0
+	Return $mitten
+EndFunc
+
+; Stelle (relativ zur Reiterleiste) der Anwenderansicht mit den Krankenblattfiltern ([Filter] Ansicht=, gibt es
+; weniger Ansichten, die letzte); die Reiter werden einmal am Bildschirm gesucht und gemerkt, solange die Reiterleiste
+; gleich bleibt; sind keine zu erkennen, gilt der Reiter [Filter] Reiter= mit seiner kalibrierten Lage
+Func FilterAnsicht($hWnd, $hCtrl, ByRef $x, ByRef $y)
+	Local $p = AnsichtenSuchen($hWnd, $hCtrl)
+	If Not IsArray($p) Then Return False
+	If Not IsArray($gAnsichten) Then Return HolPos(Einst("Filter", "Reiter", $defFilterReiter), $x, $y)
+	Local $n, $ansicht = Einst("Filter", "Ansicht", $defFilterAnsicht)
+	If StringIsDigit($ansicht) And Int($ansicht) > 0 Then
+		$n = Int($ansicht)
+	Else
+		$n = Int(IniRead($Ini, "Filter", "AnsichtGemerkt", $defFilterAnsichtZahl))
+	EndIf
+	If $n < 1 Then $n = 1
+	If $n > UBound($gAnsichten) Then $n = UBound($gAnsichten)
+	$x = $gAnsichten[$n - 1] - $p[0]
+	$y = Int($p[3] / 2)
+	Return True
+EndFunc
+
+; sucht die Reiter der Anwenderansichten nach $gAnsichten (Bildschirm-X ihrer Mitten, 0 wenn keine zu erkennen),
+; falls sich die Reiterleiste seit dem letzten Mal veraendert hat; liefert deren WinGetPos (0 ohne Leiste)
+Func AnsichtenSuchen($hWnd, $hCtrl)
+	Local $p = WinGetPos($hCtrl)
+	If @error Then Return 0
+	Local $fuer = $hCtrl & "|" & $p[0] & "|" & $p[1] & "|" & $p[2] & "|" & $p[3]
+	If $gAnsichtenFuer <> $fuer Then
+		If Not WinActive($hWnd) Then
+			WinActivate($hWnd)
+			WinWaitActive($hWnd, "", 2)
+			Sleep(100) ; bis das Fenster neu gezeichnet ist
+		EndIf
+		; mittlere Zeilen der Leiste (oben und unten liegen Randlinien), nach 50 Pixeln Luecke kommen keine Reiter mehr
+		$gAnsichten = ReiterSuchen($p[0], $p[1] + Int($p[3] * 0.3), $p[0] + $p[2] - 1, $p[1] + Int($p[3] * 0.7), 50)
+		If IsArray($gAnsichten) Then $gAnsichtenFuer = $fuer
+	EndIf
+	Return $p
+EndFunc
+
+; Protokoll (Aufrufe.log), wenn ein Filterkuerzel die Anwenderansicht wechselt: was in der offenen gesehen wurde,
+; welche Reiter oben erkannt und welcher davon aktiv ist, wohin gewechselt wird ($ax relativ zur Reiterleiste)
+Func FilterProtokoll($hWnd, $hCtrl, $ax)
+	Local $p = WinGetPos($hCtrl), $txt = ""
+	If IsArray($p) And IsArray($gAnsichten) Then
+		For $i = 0 To UBound($gAnsichten) - 1
+			$txt &= " " & ($gAnsichten[$i] - $p[0]) & (PunktAktiv($hWnd, $hCtrl, $gAnsichten[$i] - $p[0], Int($p[3] / 2)) ? "(aktiv)" : "")
+		Next
+	EndIf
+	Protokoll("Filter: offene Ansicht ohne Filter erkannt (" & $gFilterInfo & "); Reiterleiste " & (IsArray($p) ? $p[0] & "," & $p[1] & " " & _
+			$p[2] & "x" & $p[3] : "?") & ", Ansichten bei" & ($txt = "" ? " (keine erkannt)" : $txt) & "; AnsichtGemerkt " & _
+			IniRead($Ini, "Filter", "AnsichtGemerkt", "-") & ", Ansicht=" & Einst("Filter", "Ansicht", $defFilterAnsicht) & "; Wechsel nach x=" & $ax)
+EndFunc
+
+; zeigt die gerade offene Anwenderansicht Krankenblattfilter? Dann "links" bzw. "unten" (bei fest eingestellter Lage
+; diese), sonst ""; bei Ansicht=auto wird ihre Nummer gemerkt (AnsichtGemerkt in der eigenen INI), damit Filterkuerzel
+; aus anderen Ansichten dorthin wechseln
+Func FilterHier($hWnd, $hCtrl)
+	If Not WinActive($hWnd) Then
+		WinActivate($hWnd)
+		If Not WinWaitActive($hWnd, "", 2) Then Return ""
+		Sleep(100) ; bis das Fenster neu gezeichnet ist
+	EndIf
+	Local $hier = FilterLageErkennen($hWnd)
+	If $hier = "" Then Return ""
+	Local $lage = Einst("Filter", "Lage", $defFilterLage)
+	If $lage = "links" Or $lage = "unten" Then $hier = $lage
+	$gFilterLage = $hier
+	Local $ansicht = Einst("Filter", "Ansicht", $defFilterAnsicht)
+	If StringIsDigit($ansicht) And Int($ansicht) > 0 Then Return $hier
+	Local $p = AnsichtenSuchen($hWnd, $hCtrl)
+	If Not IsArray($p) Or Not IsArray($gAnsichten) Then Return $hier
+	For $i = 0 To UBound($gAnsichten) - 1
+		If Not PunktAktiv($hWnd, $hCtrl, $gAnsichten[$i] - $p[0], Int($p[3] / 2)) Then ContinueLoop
+		If Int(IniRead($Ini, "Filter", "AnsichtGemerkt", 0)) <> $i + 1 Then
+			DirCreate(@AppDataDir & "\MOReiter")
+			IniWrite($Ini, "Filter", "AnsichtGemerkt", $i + 1)
+			Hinweis("Krankenblattfilter: Anwenderansicht " & $i + 1 & " gemerkt")
+		EndIf
+		ExitLoop
+	Next
+	Return $hier
 EndFunc
 
 ; klickt an den Bildschirmpunkt $x,$y auf das Control, das dort liegt; $verdeckt ist die Meldung,
@@ -6742,6 +6990,24 @@ Func KalibrierFilter($i)
 	Local $m = MouseGetPos(), $p = WinGetPos($hCtrl)
 	Local $x = $m[0] - $p[0], $y = $m[1] - $p[1]
 	DirCreate(@AppDataDir & "\MOReiter")
+	$gFilterLage = ""
+	If FilterUnten($hWnd) Then
+		; Reiter unten: nur die Hoehe der Reiterzeile unter der Karteikarte, die Reiter selbst werden gesucht
+		If $i > 0 Then
+			Hinweis("Filter-Reiter unten: nur Strg+Alt+Umsch+^ auf dem ersten n" & ChrW(246) & "tig, die Reiter sucht MOReiter selbst")
+			Return True
+		EndIf
+		Local $hGrid = KarteiListe($hWnd)
+		If Not $hGrid Then Return Meldung("Keine Karteikarte sichtbar")
+		Local $g = WinGetPos($hGrid)
+		If @error Then Return Meldung("Karteikarte nicht sichtbar")
+		IniWrite($Ini, "Filter", "UntenY", $m[1] - $g[1] - $g[3])
+		Local $uy = 0
+		Local $mitten = FilterUntenReiter($hWnd, $uy)
+		Hinweis("Filter-Reiter unten kalibriert: " & $m[1] - $g[1] - $g[3] & " Pixel unter der Karteikarte, " & _
+				(IsArray($mitten) ? UBound($mitten) : 0) & " Reiter gefunden")
+		Return True
+	EndIf
 	If $i = 0 Then
 		IniWrite($Ini, "Filter", "X", $x)
 		IniWrite($Ini, "Filter", "Y", $y)
@@ -6819,6 +7085,11 @@ EndFunc
 Func ReiterAktiv($name, $hWnd, $hCtrl)
 	Local $x, $y
 	HolPos($name, $x, $y)
+	Return PunktAktiv($hWnd, $hCtrl, $x, $y)
+EndFunc
+
+; ist der Reiter an der Stelle $x,$y (relativ zur Reiterleiste) hellblau hinterlegt, also aktiv?
+Func PunktAktiv($hWnd, $hCtrl, $x, $y)
 	If Not WinActive($hWnd) Then
 		WinActivate($hWnd)
 		If Not WinWaitActive($hWnd, "", 2) Then Return False
