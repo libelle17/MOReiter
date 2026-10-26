@@ -4136,7 +4136,8 @@ Func PraxisEinrichten()
 	$k.Item("PdfText") = PraxisKaestchen("Berichtszeitraum mit pdftotext.exe aus dem PDF lesen (f" & ChrW(252) & "r die Dateinamen der Zuckerberichte)", 40, $y, $an.Item("PdfText"))
 	$e.Item("PdfText") = PraxisFeld("Pfad f" & ChrW(252) & "r/von pdftotext.exe (fehlt sie, l" & ChrW(228) & "dt MOReiter sie von xpdfreader.com)", 60, $y, _
 			Einst("Allgemein", "PdfText", @ScriptDir & "\pdftotext.exe"))
-	$e.Item("AddOn") = PraxisFeld("Tampermonkey als .xpi-Datei (leer: von addons.mozilla.org)", 20, $y, Einst("Labor", "AddOn", ""))
+	$e.Item("AddOn") = PraxisFeld("Pfad f" & ChrW(252) & "r/von Tampermonkey-.xpi (fehlt sie, l" & ChrW(228) & "dt MOReiter sie; leer: aus dem Internet)", 20, $y, _
+			Einst("Labor", "AddOn", ""))
 	$k.Item("Zucker") = PraxisKaestchen("Zuckerwerte aus LibreView, Dexcom Clarity, Glooko, YourLoops bzw. EasyView herunterladen (Strg+L, D, G, Y, E, Z)", 0, $y, $an.Item("Zucker"))
 	Local $portale[5] = ["LibreView", "Dexcom", "Glooko", "YourLoops", "EasyView"]
 	For $s In $portale
@@ -4291,6 +4292,17 @@ Func PraxisSchreiben($an, $w)
 		If Not FileExists($w.Item("PdfText")) And Not PdfTextHolen($w.Item("PdfText")) Then Return False
 	EndIf
 	$an.Item("Portale") = ($an.Item("Labor") Or $an.Item("Zucker"))
+	; Tampermonkey als Datei (fuer PCs ohne Internet bzw. ohne Umweg ueber addons.mozilla.org): fehlt sie, holen
+	Local $xpi = $w.Item("AddOn")
+	If $an.Item("Portale") And $xpi <> "" And Not StringRegExp($xpi, "(?i)^https?://") And Not FileExists($xpi) Then
+		ToolTip("Lade Tampermonkey ...", Default, Default, "MOReiter")
+		DirCreate(StringRegExpReplace($xpi, "\\[^\\]*$", ""))
+		Local $geholt = (InetGet(Einst("Labor", "AddOnQuelle", "https://addons.mozilla.org/firefox/downloads/latest/tampermonkey/latest.xpi"), _
+				$xpi, 1) > 0) And FileExists($xpi)
+		ToolTip("")
+		If Not $geholt Then Return PraxisFehlt("Tampermonkey lie" & ChrW(223) & " sich nicht nach " & $xpi & " herunterladen. Bitte den Pfad pr" & _
+				ChrW(252) & "fen oder das Feld leeren, dann installiert Firefox es aus dem Internet.")
+	EndIf
 	; Tasten aus den Vorgaben und der Praxis-INI (deren eigene Befehle bleiben, solange ihre Gruppe an ist)
 	Local $quelle[2] = [$IniVorgaben, $IniPraxis]
 	For $datei In $quelle
