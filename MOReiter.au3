@@ -4144,7 +4144,7 @@ Func PraxisEinrichten()
 	$k.Item("Labor") = PraxisKaestchen("Labor: das Labor stellt seine Befunde " & ChrW(252) & "ber onlinebefunde.labor-staber.de bereit (Strg+O)", 0, $y, $an.Item("Labor"))
 	$e.Item("KennungLabor") = PraxisFeld("Benutzerkennung onlinebefunde (leer: wie im Firefox gespeichert)", 20, $y, Einst("Labor", "Kennung", ""))
 	$k.Item("Ablage") = PraxisKaestchen("heruntergeladene PDFs (Laborbefunde, Zuckerberichte) des Patienten in einen Ordner verschieben und umbenennen", 20, $y, $an.Item("Ablage"))
-	$e.Item("Ablage") = PraxisFeld("Ablageordner", 40, $y, PraxisAblage())
+	$e.Item("Ablage") = PraxisFeld("Ablageordner", 40, $y, (PraxisAblage() <> "") ? PraxisAblage() : Einst("Dokumente", "AblageGemerkt", ""))
 	$k.Item("Einordnen") = PraxisKaestchen("dort weitergehend einordnen:", 40, $y, $an.Item("Einordnen"))
 	$k.Item("Sicherung") = PraxisKaestchen("Sicherheitskopie aufbewahren", 60, $y, $an.Item("Sicherung"))
 	$e.Item("Eingelesen") = PraxisFeld("Ordner der Sicherheitskopien (darunter je Jahr)", 80, $y, Einst("Dokumente", "Eingelesen", ""))
@@ -4153,9 +4153,9 @@ Func PraxisEinrichten()
 			60, $y, $an.Item("Patientenordner"))
 	$e.Item("Dok") = PraxisFeld("Ordner der Patientendokumente", 80, $y, Einst("Dokumente", "Dok", ""))
 	$k.Item("PdfText") = PraxisKaestchen("Berichtszeitraum mit pdftotext.exe aus dem PDF lesen (f" & ChrW(252) & "r die Dateinamen der Zuckerberichte)", 40, $y, $an.Item("PdfText"))
-	$e.Item("PdfText") = PraxisFeld("Pfad f" & ChrW(252) & "r/von pdftotext.exe (fehlt sie, l" & ChrW(228) & "dt MOReiter sie von xpdfreader.com)", 60, $y, _
-			Einst("Allgemein", "PdfText", @ScriptDir & "\pdftotext.exe"))
-	$e.Item("AddOn") = PraxisFeld("Pfad f" & ChrW(252) & "r/von Tampermonkey-.xpi (fehlt sie, l" & ChrW(228) & "dt MOReiter sie; leer: aus dem Internet)", 20, $y, _
+	$e.Item("PdfText") = PraxisFeld("Pfad f" & ChrW(252) & "r/von pdftotext.exe (Datei oder Ordner; fehlt sie, l" & ChrW(228) & "dt MOReiter sie)", 60, $y, _
+			Einst("Allgemein", "PdfText", Einst("Allgemein", "PdfTextGemerkt", @ScriptDir & "\pdftotext.exe")))
+	$e.Item("AddOn") = PraxisFeld("Pfad f" & ChrW(252) & "r/von Tampermonkey (.xpi-Datei oder Ordner; fehlt sie, l" & ChrW(228) & "dt MOReiter sie; leer: Internet)", 20, $y, _
 			Einst("Labor", "AddOn", ""))
 	$k.Item("Zucker") = PraxisKaestchen("Zuckerwerte aus LibreView, Dexcom Clarity, Glooko, YourLoops bzw. EasyView herunterladen (Strg+L, D, G, Y, E, Z)", 0, $y, $an.Item("Zucker"))
 	Local $portale[5] = ["LibreView", "Dexcom", "Glooko", "YourLoops", "EasyView"]
@@ -4319,11 +4319,11 @@ Func PraxisSchreiben($an, $w)
 	FileClose($fh)
 	If $an.Item("PdfText") Then
 		If $w.Item("PdfText") = "" Then Return PraxisFehlt("Bitte den Pfad f" & ChrW(252) & "r pdftotext.exe angeben.")
-		If Not FileExists($w.Item("PdfText")) And Not PdfTextHolen($w.Item("PdfText")) Then Return False
+		If Not FileExists(PdfTextDatei($w.Item("PdfText"))) And Not PdfTextHolen(PdfTextDatei($w.Item("PdfText"))) Then Return False
 	EndIf
 	$an.Item("Portale") = ($an.Item("Labor") Or $an.Item("Zucker"))
 	; Tampermonkey als Datei (fuer PCs ohne Internet bzw. ohne Umweg ueber addons.mozilla.org): fehlt sie, holen
-	Local $xpi = $w.Item("AddOn")
+	Local $xpi = XpiDatei($w.Item("AddOn"))
 	If $an.Item("Portale") And $xpi <> "" And Not StringRegExp($xpi, "(?i)^https?://") And Not FileExists($xpi) Then
 		ToolTip("Lade Tampermonkey ...", Default, Default, "MOReiter")
 		DirCreate(StringRegExpReplace($xpi, "\\[^\\]*$", ""))
@@ -4366,7 +4366,11 @@ Func PraxisSchreiben($an, $w)
 	IniWrite($IniPraxis, "Dokumente", "Patientenordner", $an.Item("Patientenordner") ? "1" : "0")
 	PraxisWert("Dokumente", "Eingelesen", $w.Item("Eingelesen"))
 	PraxisWert("Dokumente", "Dok", $w.Item("Dok"))
-	PraxisWert("Allgemein", "PdfText", ($an.Item("Ablage") And $an.Item("PdfText")) ? $w.Item("PdfText") : "")
+	; ausgeschaltet: der Pfad gilt nicht, bleibt aber fuer das naechste Einschalten gemerkt
+	PraxisWert("Dokumente", "AblageGemerkt", $an.Item("Ablage") ? "" : $w.Item("Ablage"))
+	Local $pdf = ($an.Item("Ablage") And $an.Item("PdfText"))
+	PraxisWert("Allgemein", "PdfText", $pdf ? $w.Item("PdfText") : "")
+	PraxisWert("Allgemein", "PdfTextGemerkt", $pdf ? "" : $w.Item("PdfText"))
 	PraxisWert("Labor", "AddOn", $w.Item("AddOn"))
 	PraxisWert("Dexcom", "SpeichernAuf", $w.Item("SpeichernAuf"))
 	If Not FileExists($IniPraxis) Then Return PraxisFehlt($IniPraxis & " nicht beschreibbar")
@@ -4571,7 +4575,7 @@ EndFunc
 ; "Do. 10. Sep. 2026 - Fr. 9. Okt. 2026" (Dexcom), "10 Jan 2024 - 6 Feb 2024" (Libre),
 ; "Fr, 19. Sep. 2025 - Do, 02. Okt. 2025" (Glooko) und "19.09.2025 - 02.10.2025"
 Func PdfZeitraum($datei)
-	Local $exe = Einst("Allgemein", "PdfText", "")
+	Local $exe = PdfTextDatei(Einst("Allgemein", "PdfText", ""))
 	If $exe = "" Or Not FileExists($exe) Then Return ""
 	; 2 = $STDOUT_CHILD
 	Local $pid = Run('"' & $exe & '" -l 1 -enc UTF-8 "' & $datei & '" -', "", @SW_HIDE, 2)
@@ -5310,10 +5314,39 @@ EndFunc
 ; Adresse zum Installieren von Tampermonkey: [Labor] AddOn= (Pfad zu einer .xpi oder Adresse), sonst die
 ; Seite bei addons.mozilla.org; eine Datei wird als file:-Adresse geoeffnet, Firefox fragt dann nach
 Func AddOnQuelle()
-	Local $q = Einst("Labor", "AddOn", "https://addons.mozilla.org/de/firefox/addon/tampermonkey/")
+	Local $q = XpiDatei(Einst("Labor", "AddOn", ""))
+	; keine Angabe, oder ein Ordner ohne .xpi darin
+	If $q = "" Or (Not StringRegExp($q, "(?i)^https?://") And Not FileExists($q)) Then $q = "https://addons.mozilla.org/de/firefox/addon/tampermonkey/"
 	If StringRegExp($q, "^[A-Za-z]:\\") Then Return "file:///" & StringReplace($q, "\", "/")
 	If StringLeft($q, 2) = "\\" Then Return "file:" & StringReplace($q, "\", "/")
 	Return $q
+EndFunc
+
+; [Allgemein] PdfText= darf auch ein Ordner sein (endet auf \ oder ist einer): dann pdftotext.exe darin
+Func PdfTextDatei($p)
+	If $p = "" Or (StringRight($p, 1) <> "\" And Not StringInStr(FileGetAttrib($p), "D")) Then Return $p
+	Return StringRegExpReplace($p, "\\+$", "") & "\pdftotext.exe"
+EndFunc
+
+; [Labor] AddOn= darf auch ein Ordner sein (endet auf \ oder ist einer): dann die neueste tampermonkey*.xpi darin,
+; sonst dort tampermonkey.xpi (Ziel fuer das Herunterladen in der Praxis-Abfrage); eine Datei oder Adresse bleibt
+Func XpiDatei($p)
+	If $p = "" Or StringRegExp($p, "(?i)^https?://") Then Return $p
+	If StringRight($p, 1) <> "\" And Not StringInStr(FileGetAttrib($p), "D") Then Return $p
+	Local $verz = StringRegExpReplace($p, "\\+$", ""), $neu = "", $zeit = ""
+	Local $such = FileFindFirstFile($verz & "\tampermonkey*.xpi")
+	If $such <> -1 Then
+		While 1
+			Local $f = FileFindNextFile($such)
+			If @error Then ExitLoop
+			If FileGetTime($verz & "\" & $f, 0, 1) > $zeit Then
+				$zeit = FileGetTime($verz & "\" & $f, 0, 1)
+				$neu = $verz & "\" & $f
+			EndIf
+		WEnd
+		FileClose($such)
+	EndIf
+	Return ($neu <> "") ? $neu : $verz & "\tampermonkey.xpi"
 EndFunc
 
 ; %-Kodierung (UTF-8) fuer den Teil hinter "#", ausser Buchstaben, Ziffern und . - _
