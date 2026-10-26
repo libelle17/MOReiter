@@ -20,11 +20,13 @@ Hochladen, Karteikarte, Diagnose-Kurzwahlen, Tagesübersicht, Briefversand).
 
 REITER (ANWENDERANSICHT) UND HAUPTFENSTER
 ~Im Folgenden gehen wir als Beispiel von vier Anwenderansichten aus: Krankenblatt, Kartei, ePA, ePAAbr (es geht auch
-mit anderen Namen).
+mit anderen Namen). MOReiter findet ihre Reiter selbst, kann ihre Beschriftung aber nicht lesen: Es zählt von links,
+die Tasten wirken also auf die Position, nicht auf den Namen (1. = Krankenblatt, 2. = Kartei, 3. = ePA, 4. = ePAAbr;
+zu ändern unter [Krankenblatt] Nr= usw.).
 ----------------------------------------------------------------------------------------------------
-Strg+Alt+L          Reiter (Anwenderansicht) "Krankenblatt"
-Strg+Alt+K          Reiter (Anwenderansicht) "Kartei"; ist die Kartei schon aktiv: "Krankenblatt"
-Strg+Alt+P          Reiter (Anwenderansicht) "ePA"; ist die ePA schon aktiv: "ePAAbr"
+Strg+Alt+L          1. Reiter (Anwenderansicht, z.B. "Krankenblatt")
+Strg+Alt+K          2. Reiter (z.B. "Kartei"); ist er schon aktiv: 1. Reiter
+Strg+Alt+P          3. Reiter (z.B. "ePA"); ist er schon aktiv: 4. Reiter (z.B. "ePAAbr")
 Strg+Alt+U          ("unten") die Liste im Container Karteikarte aktivieren, so dass Pfeiltasten usw.
                     dort wirken; ist keine sichtbar, vorher zum Krankenblatt wechseln
 Strg+Alt+T          aus jedem Programm: die Termine des Patienten zeigen, solange Strg+Alt+T gehalten
@@ -98,7 +100,10 @@ Strg+Alt darf zwischen zwei Tasten gehalten bleiben, z.B. für E und dann V.
 KALIBRIEREN (nur nötig, wenn ein Klick daneben geht)
 ----------------------------------------------------------------------------------------------------
 Strg+Alt+Umsch+L / K / P / A
-                    Maus auf den Reiter "Krankenblatt" / "Kartei" / "ePA" / "ePAAbr" halten und drücken
+                    Maus auf den 1. / 2. / 3. / 4. Reiter (z.B. "Krankenblatt" / "Kartei" / "ePA" / "ePAAbr")
+                    halten und drücken;
+                    danach gilt diese feste Stelle statt des selbst gefundenen Reiters (zurück: X und Y in
+                    %APPDATA%\MOReiter\MOReiter.ini löschen)
 Strg+Alt+Umsch+^    Maus auf den ersten Filter ("Alle Einträge") halten und drücken (Reiter links und unten
                     getrennt gespeichert; unten genügt das, die übrigen Reiter sucht MOReiter selbst)
 Strg+Alt+Umsch+ eine andere Filtertaste (z.B. F12)
@@ -311,7 +316,8 @@ gilt der eingebaute Wert. Alle drei haben denselben Aufbau; Kalibrieren schreibt
               Autostart=0        Einrichten.bat legt keine Verknüpfung im Autostart-Ordner an (z.B. wo ein
                                  Anmeldeskript MOReiter startet)
               Control, AktivFarbe, Toleranz   Reiterleiste und Farbe des aktiven Reiters
-[Kartei], [Krankenblatt], [ePA], [ePAAbr]   X, Y   Lage der Reiter (schreibt das Kalibrieren)
+[Kartei], [Krankenblatt], [ePA], [ePAAbr]   Nr   der wievielte Reiter von links (Vorgabe 2, 1, 3, 4)
+                                            X, Y   feste Lage statt dessen (schreibt das Kalibrieren)
 [Filter]      Ansicht=2          die wievielte Anwenderansicht (Reiter von links) die Krankenblattfilter hat
                                  (ohne Eintrag: die zuletzt benutzte, gemerkt als AnsichtGemerkt in der eigenen INI)
               Reiter=Kartei      nur falls die Reiter nicht zu erkennen sind: dieser kalibrierte Reiter

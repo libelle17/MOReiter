@@ -120,8 +120,8 @@ Const $IniVorgaben = @ScriptDir & "\MOReiter-Vorgaben.ini"
 
 ; Voreinstellungen (Pixel relativ zum Control), werden durch Kalibrieren in der INI ueberschrieben
 Const $defCtrl = "[CLASS:TmoTabSet; INSTANCE:1]"
-; (kalibriert am 27.9.26)
-Const $defKarteiX = 53, $defKarteiY = 10, $defKrbX = 117, $defKrbY = 9
+; (nur noch, wenn die Reiter am Bildschirm nicht zu erkennen sind; Reihenfolge Krankenblatt, Kartei, ePA, ePAAbr)
+Const $defKarteiX = 122, $defKarteiY = 10, $defKrbX = 48, $defKrbY = 10
 Const $defEpaX = 164, $defEpaY = 14, $defEpaAbrX = 212, $defEpaAbrY = 10
 ; Hintergrund des aktiven Reiters (hellblau, gemessen RGB 210,226,247), inaktive Reiter sind weiss
 Const $defAktivFarbe = 0xD2E2F7, $defToleranz = 12
@@ -734,12 +734,9 @@ Func MOPositionen($hWnd, ByRef $pos)
 	If Not @error And BitAND(WinGetState($hCtrl), 2) Then
 		Local $p = WinGetPos($hCtrl), $x, $y
 		If Not @error Then
-			HolPos(ReiterAktiv("Kartei", $hWnd, $hCtrl) ? "Krankenblatt" : "Kartei", $x, $y)
-			PosDazu($pos, $p[0] + $x, $p[1] + $y, "K")
-			HolPos("Krankenblatt", $x, $y)
-			PosDazu($pos, $p[0] + $x, $p[1] + $y, "L")
-			HolPos(ReiterAktiv("ePA", $hWnd, $hCtrl) ? "ePAAbr" : "ePA", $x, $y)
-			PosDazu($pos, $p[0] + $x, $p[1] + $y, "P")
+			If HolPos(ReiterAktiv("Kartei", $hWnd, $hCtrl) ? "Krankenblatt" : "Kartei", $x, $y) Then PosDazu($pos, $p[0] + $x, $p[1] + $y, "K")
+			If HolPos("Krankenblatt", $x, $y) Then PosDazu($pos, $p[0] + $x, $p[1] + $y, "L")
+			If HolPos(ReiterAktiv("ePA", $hWnd, $hCtrl) ? "ePAAbr" : "ePA", $x, $y) Then PosDazu($pos, $p[0] + $x, $p[1] + $y, "P")
 		EndIf
 	EndIf
 	KnopfPos($pos, LetztePatKnopf($hWnd), "Z")
@@ -7034,16 +7031,14 @@ EndFunc
 Func Reiter($name)
 	Local $x, $y
 	Local $wechsel = ($name = "Wechsel" Or $name = "ePAWechsel")
-	If Not $wechsel And Not HolPos($name, $x, $y) Then Return Meldung("Unbekannter Reiter: " & $name)
 	Local $hWnd, $hCtrl
 	If Not HolLeiste($hWnd, $hCtrl) Then Return False
 	If $name = "Wechsel" Then
 		$name = ReiterAktiv("Kartei", $hWnd, $hCtrl) ? "Krankenblatt" : "Kartei"
-		HolPos($name, $x, $y)
 	ElseIf $name = "ePAWechsel" Then
 		$name = ReiterAktiv("ePA", $hWnd, $hCtrl) ? "ePAAbr" : "ePA"
-		HolPos($name, $x, $y)
 	EndIf
+	If Not HolPos($name, $x, $y) Then Return Meldung("Reiter """ & $name & """ nicht gefunden (so viele Anwenderansichten gibt es nicht)")
 
 	If Einst("Allgemein", "EchteMaus", "0") = "1" Then
 		; Ausweichweg, falls das Control auf gepostete Mausnachrichten nicht reagiert
@@ -7060,23 +7055,45 @@ Func Reiter($name)
 	Return True
 EndFunc
 
+; Stelle des Reiters $name relativ zur Reiterleiste: selbst kalibriert ([name] X, Y), sonst der wievielte Reiter
+; am Bildschirm ([name] Nr=, Vorgabe Krankenblatt 1, Kartei 2, ePA 3, ePAAbr 4; False, wenn es so viele nicht gibt),
+; sind dort keine Reiter zu erkennen, die eingebauten Werte
 Func HolPos($name, ByRef $x, ByRef $y)
+	Local $defX, $defY, $nr
 	Switch $name
-		Case "Kartei"
-			$x = Int(Einst("Kartei", "X", $defKarteiX))
-			$y = Int(Einst("Kartei", "Y", $defKarteiY))
 		Case "Krankenblatt"
-			$x = Int(Einst("Krankenblatt", "X", $defKrbX))
-			$y = Int(Einst("Krankenblatt", "Y", $defKrbY))
+			$defX = $defKrbX
+			$defY = $defKrbY
+			$nr = 1
+		Case "Kartei"
+			$defX = $defKarteiX
+			$defY = $defKarteiY
+			$nr = 2
 		Case "ePA"
-			$x = Int(Einst("ePA", "X", $defEpaX))
-			$y = Int(Einst("ePA", "Y", $defEpaY))
+			$defX = $defEpaX
+			$defY = $defEpaY
+			$nr = 3
 		Case "ePAAbr"
-			$x = Int(Einst("ePAAbr", "X", $defEpaAbrX))
-			$y = Int(Einst("ePAAbr", "Y", $defEpaAbrY))
+			$defX = $defEpaAbrX
+			$defY = $defEpaAbrY
+			$nr = 4
 		Case Else
 			Return False
 	EndSwitch
+	If Einst($name, "X", "") = "" Then
+		Local $hWnd = WinGetHandle($MOFenster)
+		Local $hCtrl = @error ? 0 : ControlGetHandle($hWnd, "", Einst("Allgemein", "Control", $defCtrl))
+		Local $p = $hCtrl ? AnsichtenSuchen($hWnd, $hCtrl) : 0
+		If IsArray($p) And IsArray($gAnsichten) Then
+			Local $n = Int(Einst($name, "Nr", $nr))
+			If $n < 1 Or $n > UBound($gAnsichten) Then Return False
+			$x = $gAnsichten[$n - 1] - $p[0]
+			$y = Int($p[3] / 2)
+			Return True
+		EndIf
+	EndIf
+	$x = Int(Einst($name, "X", $defX))
+	$y = Int(Einst($name, "Y", $defY))
 	Return True
 EndFunc
 
@@ -7084,7 +7101,7 @@ EndFunc
 ; (eine PixelSearch ueber ein kleines Rechteck dauert nur wenige Millisekunden)
 Func ReiterAktiv($name, $hWnd, $hCtrl)
 	Local $x, $y
-	HolPos($name, $x, $y)
+	If Not HolPos($name, $x, $y) Then Return False
 	Return PunktAktiv($hWnd, $hCtrl, $x, $y)
 EndFunc
 

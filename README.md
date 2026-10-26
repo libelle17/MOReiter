@@ -97,9 +97,10 @@ eingebettete Fassung wieder an.
 
 ## Wenn ein Klick danebengeht
 
-Manche Bedienelemente von Medical Office haben keine eigenen Fenster; MOReiter klickt dort an
-eingemessenen Stellen. Passen sie bei Ihnen nicht, die Maus auf das Element halten und kalibrieren,
-z.B. Strg+Alt+Umsch+K auf dem Reiter „Kartei“ (s. Hilfe, Abschnitt „Kalibrieren“).
+Manche Bedienelemente von Medical Office haben keine eigenen Fenster. Die Reiter der Anwenderansichten und die
+Krankenblattfilter sucht MOReiter selbst am Bildschirm (Strg+Alt+L = 1. Reiter, K = 2., P = 3./4., einstellbar);
+anderes klickt es an eingemessenen Stellen. Geht ein Klick daneben, die Maus auf das Element halten und
+kalibrieren, z.B. Strg+Alt+Umsch+K auf dem Reiter „Kartei“ (s. Hilfe, Abschnitt „Kalibrieren“).
 
 ## Onlineportale
 
