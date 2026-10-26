@@ -33,19 +33,48 @@ unterstützt. Benutzung auf eigene Verantwortung, ohne Gewährleistung (s. [LICE
 
 ## Einrichten
 
-1. Den grünen Knopf „<> Code“ rechts über der Dateiliste aufklappen und „Download ZIP“ wählen (nicht der
-   Reiter „Code“ oben links), oder direkt über
-   [https://github.com/libelle17/MOReiter/archive/refs/heads/main.zip](https://github.com/libelle17/MOReiter/archive/refs/heads/main.zip)
-   herunterladen; eine Anmeldung bei GitHub ist nicht nötig. Vor dem Entpacken: Rechtsklick auf das ZIP →
-   Eigenschaften → „Zulassen“ anhaken, sonst warnt Windows bei jeder Datei. Dann entpacken, z.B. nach `C:\MOReiter`.
-2. `Kompilieren.bat` doppelklicken. Beim ersten Mal fragt MOReiter in einem Fenster, was die Praxis nutzt
-   (Labor, Zuckerportale, Smart Pix, …) und welche Werte gelten (Ablageordner, Benutzerkennungen …),
-   und speichert das in `MOReiter-Praxis.ini`. Ändern lässt es sich später jederzeit mit
-   `MOReiter.exe Praxis`.
-3. MOReiter startet und erscheint als Symbol im Infobereich der Taskleiste. Strg+Alt+F1 zeigt die Hilfe.
+1. **Herunterladen:** den grünen Knopf „<> Code“ rechts über der Dateiliste aufklappen und „Download ZIP“
+   wählen (nicht der Reiter „Code“ oben links), oder direkt über
+   [https://github.com/libelle17/MOReiter/archive/refs/heads/main.zip](https://github.com/libelle17/MOReiter/archive/refs/heads/main.zip);
+   eine Anmeldung bei GitHub ist nicht nötig.
+2. **Freigeben und entpacken:** Rechtsklick auf das ZIP → Eigenschaften → unten „Zulassen“ anhaken → OK
+   (sonst warnt Windows bei jeder Datei aus dem Internet). Dann entpacken, z.B. nach `C:\MOReiter`.
+3. **Kompilieren:** `Kompilieren.bat` doppelklicken. Fehlt AutoIt3, lädt es die portable Fassung (einige
+   Sekunden). Meldet die Windows-Sicherheit bzw. SmartScreen eine „unbekannte App“: „Weitere Informationen“ →
+   „Trotzdem ausführen“ (MOReiter überwacht die Tastatur für seine Kürzel, das wirkt auf Virenscanner manchmal
+   verdächtig; der Quelltext liegt offen hier).
+4. **Einstellungen:** Beim ersten Mal öffnet sich das Fenster „MOReiter einrichten“. Ankreuzen, was die Praxis
+   nutzt (Labor, Ablage und Einordnen der PDFs, Zuckerportale, Smart Pix, Patientenlaufzettel), die Pfade und
+   Benutzerkennungen eintragen und OK drücken; was von einem Kästchen abhängt, ist grau, solange es aus ist.
+   Gespeichert wird in `MOReiter-Praxis.ini`. Später lässt sich alles mit `Einstellungen.bat` ändern.
+5. **Start:** MOReiter startet von `%APPDATA%\MOReiter` aus, erscheint als Symbol im Infobereich der Taskleiste
+   (ggf. unter dem kleinen Pfeil) und trägt sich in den Autostart des Benutzers ein (`[Allgemein] Autostart=0`
+   schaltet das ab). Es läuft immer nur einmal; ein zweiter Start beendet sich still.
+6. **Hilfe:** Strg+Alt+F1 zeigt alle Tasten, die auf diesem PC eingerichtet sind.
 
 Auf weiteren PCs der Praxis: den Ordner samt `MOReiter.exe` und `MOReiter-Praxis.ini` kopieren und
 `Einrichten.bat` starten. Es kopiert beides nach `%APPDATA%\MOReiter` und startet MOReiter von dort.
+
+### Erster Abruf von Labor oder Zuckerportalen (Tampermonkey)
+
+Die Arbeit auf den Webseiten machen kleine Benutzerskripte im Firefox-Add-on Tampermonkey. Beim ersten Abruf
+(oder mit Strg+Umsch+T für alle auf einmal) richtet MOReiter beides ein; dabei öffnen sich mehrere Fenster:
+
+1. **Tampermonkey hinzufügen:** Ein Tab mit Tampermonkey (aus der eingestellten .xpi-Datei oder von
+   addons.mozilla.org, dort „Zu Firefox hinzufügen“ klicken). Oben erscheint ein **kleines Fenster**
+   „Tampermonkey hinzufügen?“ mit den Berechtigungen: **„Hinzufügen“** klicken. Danach ein weiteres kleines
+   Fenster „Tampermonkey wurde hinzugefügt“: das Häkchen „An Symbolleiste anheften“ ist nicht nötig,
+   **„OK“** klicken.
+2. **Begrüßungsseite:** Tampermonkey öffnet danach seine Seite auf tampermonkey.net; MOReiter schließt sie
+   gleich wieder. Erscheint dort doch ein Fenster zur Einwilligung in Cookies und Werbung: „Alle ablehnen“
+   bzw. alle Schalter aus (für MOReiter wird die Seite nicht gebraucht).
+3. **Benutzerskripte:** Für jedes Skript öffnet sich ein **großer Tab** von Tampermonkey mit dem Quelltext des
+   Skripts und dem Knopf **„Installieren“** (bei einer neueren Fassung „Aktualisieren“): anklicken, der Tab
+   schließt sich. Ist ein Skript schon aktuell („Neu installieren“), den Tab einfach schließen.
+4. **Anmelden:** Die Kennwörter kommen aus dem Kennwortspeicher von Firefox, MOReiter speichert keine. Also
+   bei jedem Portal einmal von Hand anmelden und Firefox das Kennwort speichern lassen.
+5. **Patientenlaufzettel** (nur mit Dateilese): Beim ersten Klick auf einen MOReiter-Link fragt Firefox, ob er
+   MOReiter öffnen darf: „Immer erlauben“ anhaken und „Link öffnen“.
 
 ## Einstellungen
 
@@ -58,7 +87,8 @@ MOReiter liest drei Dateien gleichen Aufbaus, die erste, die einen Wert nennt, g
 | `MOReiter-Vorgaben.ini` | allgemeine Voreinstellungen aus diesem Repo, mit Erklärungen zu jedem Eintrag |
 
 Bei einem Update werden nur `MOReiter.au3`, die Vorgaben und die übrigen Repo-Dateien ersetzt; die
-eigenen Einstellungen bleiben erhalten.
+eigenen Einstellungen bleiben erhalten. Fehlt `MOReiter-Vorgaben.ini`, legt MOReiter die in die exe
+eingebettete Fassung wieder an.
 
 ## Wenn ein Klick danebengeht
 

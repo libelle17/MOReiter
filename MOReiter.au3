@@ -1,3 +1,6 @@
+; Tray-Symbol erst fuer die residente Instanz (Aufrufe mit Parametern wie "Praxis" oder Laufzettel-Links zeigen
+; keins, sonst saehe es aus, als liefe MOReiter doppelt)
+#NoTrayIcon
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
 #AutoIt3Wrapper_Icon=MOReiter.ico
 #AutoIt3Wrapper_Outfile=MOReiter.exe
@@ -101,6 +104,7 @@
 #include <StaticConstants.au3>
 #include <EditConstants.au3>
 #include <ButtonConstants.au3>
+#include <GuiRichEdit.au3>
 Opt("MustDeclareVars", 1)
 Opt("WinTitleMatchMode", 4)
 ; keine 250 ms Pause nach jedem Fensterbefehl; wo ein Fenster Zeit braucht, wird ausdruecklich gewartet
@@ -198,9 +202,12 @@ Global $gLaeuft = "", $gLaeuftZeit = 0, $gBesetzt = ""
 ; Zustand des Hooks fuer die Momentaufnahme beim Neustart (NeustartPruefen): letzter Aufruf des Rueckrufs, letzte
 ; ausgewertete Taste mit ihrer Aufgabe, letztes Einhaengen, ob Strg+Alt+Esc ueber den Hook oder den Hotkey kam
 Global $gHookZeit = TimerInit(), $gHookLetzte = "", $gErneuertZeit = TimerInit(), $gErneuertOk = True, $gNeustartWeg = ""
-; offenes Hilfefenster (0 = keins), sein Textfeld, das Suchfeld, die unsichtbaren Controls fuer Strg+A, Strg+F und
-; F3/Enter (weitersuchen) und die Stelle des letzten Treffers (0 = von vorn)
-Global $gHilfe = 0, $gHilfeText = 0, $gHilfeAlles = 0, $gHilfeSuch = 0, $gHilfeSuchen = 0, $gHilfeWeiter = 0, $gHilfePos = 0
+; offenes Hilfefenster (0 = keins), sein Textfeld (RichEdit-Handle) und dessen Text (Zeilenende @CR wie im RichEdit),
+; das Suchfeld, die unsichtbaren Controls fuer die Tasten (Strg+A, Strg+F, F3/Enter, Bild auf/ab, Strg+Pos1/Ende,
+; Esc) und die Stelle des letzten Treffers (0 = von vorn)
+Global $gHilfe = 0, $gHilfeText = 0, $gHilfeInhalt = "", $gHilfeSuch = 0, $gHilfePos = 0
+Global $gHilfeAlles = 0, $gHilfeSuchen = 0, $gHilfeWeiter = 0, $gHilfeHoch = 0, $gHilfeRunter = 0, $gHilfeAnfang = 0, _
+		$gHilfeEnde = 0, $gHilfeZu = 0
 ; [Aufrufe]: externe Programme auf Strg[+Umsch]+Buchstabe in Medical Office, je Zeile Name, Taste (vk), Umsch, Befehl
 Global $gAufrufe[0][4]
 ; [Aufrufe] Protokoll=1: jede passende Taste mit Fokus und Entscheidung nach %APPDATA%\MOReiter\Aufrufe.log
@@ -268,8 +275,10 @@ ElseIf _Singleton("MOReiter_resident", 1) = 0 Then ; laeuft schon
 	Exit
 EndIf
 
+Opt("TrayIconHide", 0)
 ; Icon aus der Datei daneben laden, falls es beim Kompilieren nicht in die exe gekommen ist
 If FileExists(@ScriptDir & "\MOReiter.ico") Then TraySetIcon(@ScriptDir & "\MOReiter.ico")
+AutostartEintragen()
 TraySetToolTip("MOReiter " & Stand() & ": Strg+Alt+F1 Hilfe, K Kartei/Wechsel, L Krankenblatt, P ePA/ePAAbr, U Karteikarte, T Termine, D Explorer, Z letzte Patienten, Leertaste Menue, ^..F12 oder Ziffernblock Filter bzw. Diagnose-Kurzwahl")
 ; sonst haelt ein Klick aufs Tray-Symbol das Skript an, und Windows haengt den unbeantworteten Hook ab
 Opt("TrayAutoPause", 0)
@@ -4156,7 +4165,7 @@ Func PraxisEinrichten()
 	$e.Item("PdfText") = PraxisFeld("Pfad f" & ChrW(252) & "r/von pdftotext.exe (Datei oder Ordner; fehlt sie, l" & ChrW(228) & "dt MOReiter sie)", 60, $y, _
 			Einst("Allgemein", "PdfText", Einst("Allgemein", "PdfTextGemerkt", @ScriptDir & "\pdftotext.exe")))
 	$e.Item("AddOn") = PraxisFeld("Pfad f" & ChrW(252) & "r/von Tampermonkey (.xpi-Datei oder Ordner; fehlt sie, l" & ChrW(228) & "dt MOReiter sie; leer: Internet)", 20, $y, _
-			Einst("Labor", "AddOn", ""))
+			Einst("Labor", "AddOn", @ScriptDir & "\"))
 	$k.Item("Zucker") = PraxisKaestchen("Zuckerwerte aus LibreView, Dexcom Clarity, Glooko, YourLoops bzw. EasyView herunterladen (Strg+L, D, G, Y, E, Z)", 0, $y, $an.Item("Zucker"))
 	Local $portale[5] = ["LibreView", "Dexcom", "Glooko", "YourLoops", "EasyView"]
 	; die Kennwoerter kommen aus Firefox, MOReiter speichert keine
@@ -4166,8 +4175,9 @@ Func PraxisEinrichten()
 	For $s In $portale
 		$e.Item("Kennung" & $s) = PraxisFeld("Benutzerkennung " & $s & (($s = "LibreView") ? " (n" & ChrW(246) & "tig f" & ChrW(252) & "r die automatische Anmeldung)" : _
 				" (leer: die erste im Firefox gespeicherte)"), 20, $y, Einst($s, "Kennung", ""))
+		If $s = "Dexcom" Then $e.Item("SpeichernAuf") = PraxisFeld("Dexcom: PCs, die den Bericht als PDF speichern (durch Komma getrennt)", _
+				20, $y, Einst("Dexcom", "SpeichernAuf", ""))
 	Next
-	$e.Item("SpeichernAuf") = PraxisFeld("Dexcom: PCs, die den Bericht als PDF speichern (durch Komma getrennt)", 20, $y, Einst("Dexcom", "SpeichernAuf", ""))
 	$k.Item("SmartPix") = PraxisKaestchen("Accu-Chek Smart Pix (Strg+S Patient w" & ChrW(228) & "hlen, Strg+Umsch+S Patientenliste abgleichen)", 0, $y, $an.Item("SmartPix"))
 	$k.Item("Laufzettel") = PraxisKaestchen("Patientenlaufzettel, Arztbrief usw. aus Dateilese.exe, FreeCommander " & ChrW(252) & "ber FCAufruf.exe (Strg+P, A, I)", 0, $y, $an.Item("Laufzettel"))
 	Local $ok = GUICtrlCreateButton("OK", 680, $y + 10, 95, 30), $ab = GUICtrlCreateButton("Abbrechen", 790, $y + 10, 95, 30)
@@ -4371,7 +4381,8 @@ Func PraxisSchreiben($an, $w)
 	Local $pdf = ($an.Item("Ablage") And $an.Item("PdfText"))
 	PraxisWert("Allgemein", "PdfText", $pdf ? $w.Item("PdfText") : "")
 	PraxisWert("Allgemein", "PdfTextGemerkt", $pdf ? "" : $w.Item("PdfText"))
-	PraxisWert("Labor", "AddOn", $w.Item("AddOn"))
+	; auch leer (= aus dem Internet) speichern, sonst stuende beim naechsten Mal wieder der Vorschlag im Feld
+	IniWrite($IniPraxis, "Labor", "AddOn", $w.Item("AddOn"))
 	PraxisWert("Dexcom", "SpeichernAuf", $w.Item("SpeichernAuf"))
 	If Not FileExists($IniPraxis) Then Return PraxisFehlt($IniPraxis & " nicht beschreibbar")
 	MsgBox(64, "MOReiter", "Gespeichert in " & $IniPraxis & ".", 10)
@@ -5415,6 +5426,17 @@ Func LinkAusfuehren($url)
 	Return Zucker()
 EndFunc
 
+; beim Anmelden starten (HKCU ...\Run), wo es nicht NVerb o.ae. tut; [Allgemein] Autostart=0 schaltet das ab
+Func AutostartEintragen()
+	If Not @Compiled Then Return
+	Local $k = "HKCU\Software\Microsoft\Windows\CurrentVersion\Run", $befehl = '"' & @AutoItExe & '"'
+	If Einst("Allgemein", "Autostart", "1") <> "1" Then
+		RegDelete($k, "MOReiter")
+	ElseIf RegRead($k, "MOReiter") <> $befehl Then
+		RegWrite($k, "MOReiter", "REG_SZ", $befehl)
+	EndIf
+EndFunc
+
 ; Linkschema "moreiter:" fuer diesen Benutzer auf diese exe (bzw. dieses Skript) eintragen, ohne Adminrechte
 Func LinkSchemaEintragen()
 	Local $k = "HKCU\Software\Classes\moreiter"
@@ -5643,11 +5665,18 @@ Func FFZustand($h, $nr, $ausser, $ms)
 	Return ""
 EndFunc
 
-; Strg+Alt+F1: bildschirmfuellendes Fenster mit der Hilfe; ist es schon offen, schliesst es sich.
-; Der Text steht in MOReiter-Hilfe.txt (UTF-8), die beim Kompilieren in die exe eingebettet wird.
-; Das Fenster blockiert die Hauptschleife nicht, geschlossen wird es in HilfePruefen.
+; Strg+Alt+F1: Fenster mit der Hilfe (maximiert, aber ein normales Fenster: mit Alt+Tab kann man daneben etwas
+; ausprobieren); ist es schon offen, holt Strg+Alt+F1 es nach vorn bzw. schliesst es, wenn es schon vorn ist.
+; Der Text steht in MOReiter-Hilfe.txt (UTF-8), die beim Kompilieren in die exe eingebettet wird; was zwischen
+; {FARBE} und {FARBE ENDE} steht (die Zusatzfunktionen), ist farbig hinterlegt.
+; Das Fenster blockiert die Hauptschleife nicht, die Tasten fragt HilfePruefen ab.
 Func Hilfe()
-	If $gHilfe Then Return HilfeWeg()
+	If $gHilfe Then
+		If WinActive($gHilfe) Then Return HilfeWeg()
+		If BitAND(WinGetState($gHilfe), 16) Then WinSetState($gHilfe, "", @SW_RESTORE)
+		WinActivate($gHilfe)
+		Return True
+	EndIf
 	Local $datei = @TempDir & "\MOReiter-Hilfe.txt"
 	FileInstall("MOReiter-Hilfe.txt", $datei, 1)
 	; 256 = UTF-8
@@ -5662,48 +5691,81 @@ Func Hilfe()
 	; Stand und Pfad der exe unter der Ueberschrift (Titel und Unterstreichung bleiben oben)
 	Local $z2 = StringInStr($txt, @CRLF, 0, 2)
 	$txt = StringLeft($txt, $z2 + 1) & "Stand " & Stand() & " (" & @AutoItExe & ")" & @CRLF & StringMid($txt, $z2 + 2)
-	Local $b = @DesktopWidth, $h = @DesktopHeight
-	$gHilfe = GUICreate("MOReiter - Hilfe", $b, $h, 0, 0, $WS_POPUP, $WS_EX_TOPMOST)
+	; das RichEdit zaehlt einen Zeilenwechsel als ein Zeichen: Text mit @CR, darin die farbigen Bereiche merken
+	$txt = StringReplace($txt, @CRLF, @CR)
+	Local $farbe[0][2]
+	While 1
+		Local $a = StringInStr($txt, "{FARBE}" & @CR)
+		If Not $a Then ExitLoop
+		$txt = StringLeft($txt, $a - 1) & StringMid($txt, $a + 8)
+		Local $e = StringInStr($txt, "{FARBE ENDE}" & @CR, 0, 1, $a)
+		If Not $e Then $e = StringLen($txt) + 1
+		$txt = StringLeft($txt, $e - 1) & StringMid($txt, $e + 13)
+		ReDim $farbe[UBound($farbe) + 1][2]
+		$farbe[UBound($farbe) - 1][0] = $a - 1
+		$farbe[UBound($farbe) - 1][1] = $e - 1
+	WEnd
+	$gHilfeInhalt = $txt
+	$gHilfe = GUICreate("MOReiter - Hilfe", 1000, 700, -1, -1, BitOR($WS_CAPTION, $WS_SYSMENU, $WS_MINIMIZEBOX))
 	GUISetBkColor(0xFFFFFF, $gHilfe)
-	; Spalte in der Mitte, so breit wie der Text (ca. 110 Zeichen Consolas 11), hoechstens der Bildschirm
-	Local $sb = ($b > 1100) ? 1100 : $b - 20, $x = Int(($b - $sb) / 2)
+	GUISetState(@SW_MAXIMIZE, $gHilfe)
+	Local $groesse = WinGetClientSize($gHilfe), $b = $groesse[0], $h = $groesse[1]
 	; Suchzeile oben: Strg+F setzt den Cursor hinein und faengt wieder oben an, Enter bzw. F3 suchen weiter
-	GUICtrlCreateLabel("Suchen:", $x, 13, 60, 20)
-	GUICtrlSetFont(-1, 11, 400, 0, "Consolas")
-	$gHilfeSuch = GUICtrlCreateInput("", $x + 70, 10, 300, 24)
-	GUICtrlSetFont(-1, 11, 400, 0, "Consolas")
-	GUICtrlCreateLabel("Strg+F: Suchwort (von vorn), Enter oder F3: weiter   Strg+A: alles markieren   Esc: schlie" & ChrW(223) & "en", _
-			$x + 385, 13, $sb - 385, 20)
+	GUICtrlCreateLabel("Suchen:", 8, 11, 60, 20)
+	GUICtrlSetFont(-1, 10, 400, 0, "Consolas")
+	$gHilfeSuch = GUICtrlCreateInput("", 72, 8, 280, 22)
+	GUICtrlSetFont(-1, 10, 400, 0, "Consolas")
+	GUICtrlCreateLabel("Strg+F: Suchwort (von vorn), Enter oder F3: weiter   Bild auf/ab, Strg+Pos1/Ende   Strg+A: alles   " & _
+			"Alt+Tab: daneben ausprobieren   Esc: schlie" & ChrW(223) & "en", 362, 11, $b - 370, 20)
 	GUICtrlSetFont(-1, 9, 400, 0, "Consolas")
-	; ES_NOHIDESEL: der Treffer bleibt markiert, auch wenn der Cursor im Suchfeld steht
-	Local $ed = GUICtrlCreateEdit($txt, $x, 42, $sb, $h - 52, _
-			BitOR($ES_MULTILINE, $ES_READONLY, $ES_AUTOVSCROLL, $ES_NOHIDESEL, $WS_VSCROLL), 0)
-	GUICtrlSetFont($ed, 11, 400, 0, "Consolas")
-	GUICtrlSetBkColor($ed, 0xFFFFFF)
-	; Strg+A markiert alles (kann ein mehrzeiliges Eingabefeld nicht von selbst), z.B. zum Kopieren in einen Editor
-	$gHilfeText = $ed
+	; schmale Raender, damit moeglichst viel auf einmal zu sehen ist
+	$gHilfeText = _GUICtrlRichEdit_Create($gHilfe, "", 4, 36, $b - 6, $h - 38, _
+			BitOR($ES_MULTILINE, $ES_READONLY, $ES_AUTOVSCROLL, $ES_NOHIDESEL, $WS_VSCROLL))
+	_GUICtrlRichEdit_SetBkColor($gHilfeText, 0xFFFFFF)
+	_GUICtrlRichEdit_SetText($gHilfeText, $txt)
+	_GUICtrlRichEdit_SetSel($gHilfeText, 0, -1, True)
+	_GUICtrlRichEdit_SetFont($gHilfeText, 10, "Consolas")
+	; Zusatzfunktionen hell lila hinterlegt (Farbe als 0xBBGGRR)
+	For $i = 0 To UBound($farbe) - 1
+		_GUICtrlRichEdit_SetSel($gHilfeText, $farbe[$i][0], $farbe[$i][1], True)
+		_GUICtrlRichEdit_SetCharBkColor($gHilfeText, 0xF7E8F0)
+	Next
+	_GUICtrlRichEdit_SetSel($gHilfeText, 0, 0)
+	_GUICtrlRichEdit_ScrollToCaret($gHilfeText)
 	$gHilfePos = 0
 	$gHilfeAlles = GUICtrlCreateDummy()
 	$gHilfeSuchen = GUICtrlCreateDummy()
 	$gHilfeWeiter = GUICtrlCreateDummy()
-	Local $tasten[4][2] = [["^a", $gHilfeAlles], ["^f", $gHilfeSuchen], ["{F3}", $gHilfeWeiter], ["{ENTER}", $gHilfeWeiter]]
+	$gHilfeHoch = GUICtrlCreateDummy()
+	$gHilfeRunter = GUICtrlCreateDummy()
+	$gHilfeAnfang = GUICtrlCreateDummy()
+	$gHilfeEnde = GUICtrlCreateDummy()
+	$gHilfeZu = GUICtrlCreateDummy()
+	Local $tasten[10][2] = [["^a", $gHilfeAlles], ["^f", $gHilfeSuchen], ["{F3}", $gHilfeWeiter], ["{ENTER}", $gHilfeWeiter], _
+			["{PGUP}", $gHilfeHoch], ["{PGDN}", $gHilfeRunter], ["^{HOME}", $gHilfeAnfang], ["^{END}", $gHilfeEnde], _
+			["{ESC}", $gHilfeZu], ["!{F4}", $gHilfeZu]]
 	GUISetAccelerators($tasten, $gHilfe)
-	GUISetState(@SW_SHOW, $gHilfe)
 	WinActivate($gHilfe)
-	; sonst ist der ganze Text markiert
-	GUICtrlSendMsg($ed, $EM_SETSEL, 0, 0)
+	_WinAPI_SetFocus($gHilfeText)
 	Return True
 EndFunc
 
-; Esc (schliesst GUI-Fenster von selbst) bzw. Schliessen-Ereignis und Strg+A abfragen
+; Schliessen-Ereignis und die Tasten des Hilfefensters abfragen
 Func HilfePruefen()
 	Local $msg = GUIGetMsg(1)
-	If $msg[0] = $GUI_EVENT_CLOSE And $msg[1] = $gHilfe Then HilfeWeg()
-	If $msg[1] <> $gHilfe Or $msg[0] <= 0 Then Return
+	If $msg[1] <> $gHilfe Then Return
+	If $msg[0] = $GUI_EVENT_CLOSE Then Return HilfeWeg()
+	If $msg[0] <= 0 Then Return
 	Local $imSuchfeld = (_WinAPI_GetFocus() = GUICtrlGetHandle($gHilfeSuch))
 	Switch $msg[0]
+		Case $gHilfeZu
+			HilfeWeg()
 		Case $gHilfeAlles
-			GUICtrlSendMsg($imSuchfeld ? $gHilfeSuch : $gHilfeText, $EM_SETSEL, 0, -1)
+			If $imSuchfeld Then
+				GUICtrlSendMsg($gHilfeSuch, $EM_SETSEL, 0, -1)
+			Else
+				_GUICtrlRichEdit_SetSel($gHilfeText, 0, -1)
+			EndIf
 		Case $gHilfeSuchen
 			; Strg+F: ins Suchfeld, dessen Text markiert (ueberschreiben oder aendern), die naechste Suche beginnt oben
 			$gHilfePos = 0
@@ -5711,6 +5773,14 @@ Func HilfePruefen()
 			GUICtrlSendMsg($gHilfeSuch, $EM_SETSEL, 0, -1)
 		Case $gHilfeWeiter
 			HilfeSuchen()
+		Case $gHilfeHoch
+			_GUICtrlRichEdit_ScrollLineOrPage($gHilfeText, "pu")
+		Case $gHilfeRunter
+			_GUICtrlRichEdit_ScrollLineOrPage($gHilfeText, "pd")
+		Case $gHilfeAnfang, $gHilfeEnde
+			Local $p = ($msg[0] = $gHilfeAnfang) ? 0 : StringLen($gHilfeInhalt)
+			_GUICtrlRichEdit_SetSel($gHilfeText, $p, $p)
+			_GUICtrlRichEdit_ScrollToCaret($gHilfeText)
 	EndSwitch
 EndFunc
 
@@ -5722,19 +5792,20 @@ Func HilfeSuchen()
 		GUICtrlSetState($gHilfeSuch, $GUI_FOCUS)
 		Return
 	EndIf
-	Local $txt = GUICtrlRead($gHilfeText)
-	Local $p = StringInStr($txt, $wort, 0, 1, $gHilfePos + 1)
-	If Not $p Then $p = StringInStr($txt, $wort)
+	Local $p = StringInStr($gHilfeInhalt, $wort, 0, 1, $gHilfePos + 1)
+	If Not $p Then $p = StringInStr($gHilfeInhalt, $wort)
 	If Not $p Then
 		Hinweis("""" & $wort & """ nicht gefunden")
 		Return
 	EndIf
 	$gHilfePos = $p
-	GUICtrlSendMsg($gHilfeText, $EM_SETSEL, $p - 1, $p - 1 + StringLen($wort))
-	GUICtrlSendMsg($gHilfeText, $EM_SCROLLCARET, 0, 0)
+	_GUICtrlRichEdit_SetSel($gHilfeText, $p - 1, $p - 1 + StringLen($wort))
+	_GUICtrlRichEdit_ScrollToCaret($gHilfeText)
 EndFunc
 
 Func HilfeWeg()
+	If $gHilfeText Then _GUICtrlRichEdit_Destroy($gHilfeText)
+	$gHilfeText = 0
 	If $gHilfe Then GUIDelete($gHilfe)
 	$gHilfe = 0
 	Return True

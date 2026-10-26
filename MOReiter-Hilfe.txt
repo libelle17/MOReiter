@@ -8,7 +8,9 @@ noch nicht, startet jedes Tastenkürzel die Zentrale (medoff.exe) zum Anmelden.
 Alle Kürzel verwenden die LINKE Alt-Taste zusammen mit Strg. AltGr bleibt unberührt, so dass
 AltGr+2 3 7 8 9 0 ß weiterhin ² ³ { [ ] } \ liefern.
 Diese Hilfe zeigt nur, was auf diesem PC eingerichtet ist (Labor, Zuckerportale, Smart Pix,
-Patientenlaufzettel; einzustellen mit "MOReiter.exe Praxis"). Strg+A markiert alles, Strg+C kopiert.
+Patientenlaufzettel; einzustellen mit Einstellungen.bat bzw. "MOReiter.exe Praxis"). Im Hilfefenster:
+Strg+F sucht, Enter/F3 weiter, Bild auf/ab und Strg+Pos1/Ende blättern, Strg+A markiert alles, Strg+C
+kopiert; mit Alt+Tab kann man daneben ausprobieren, Strg+Alt+F1 holt die Hilfe wieder nach vorn.
 
 
 REITER UND HAUPTFENSTER
@@ -49,6 +51,56 @@ Strg+Alt + mehrere Ziffern der oberen Reihe
                     ohne Ziffernblock: z.B. Strg+Alt halten und 1, 7 tippen: erst wird Filter 1 gewählt,
                     mit der 7 dann Filter 17 (wie Ziffernblock 17)
 
+
+DIAGNOSEERFASSUNG
+----------------------------------------------------------------------------------------------------
+Ist das Fenster "Diagnoseerfassung" aktiv, wählen dieselben Tasten (^ 1 2 ... F12, Ziffernblock,
+Ziffernfolgen) statt der Filter die Diagnose-Kurzwahl-Knöpfe rechts: erst die linke Spalte von oben
+nach unten, dann die nächste. Hier wird bei Ziffernfolgen erst beim Loslassen gewählt.
+Die Knöpfe werden bei jedem Druck am Bildschirm gesucht, Kalibrieren ist nicht nötig.
+
+
+TAGESÜBERSICHT
+----------------------------------------------------------------------------------------------------
+Strg+Alt+A          bei "Offene To-Dos": die markierte Zeile als erledigt abhaken und die
+                    nachrückende Zeile markieren
+Alt+Pfeil hoch/runter
+                    in der Bereichsauswahl links den Eintrag über bzw. unter dem gelb umrandeten
+                    anklicken, danach rechts die oberste Zeile der Liste; Alt darf für mehrere Schritte
+                    gehalten bleiben
+
+
+BRIEFVERSAND (Fenster "MEDICAL OFFICE - Briefversand")
+----------------------------------------------------------------------------------------------------
+Strg+Alt+K Kontaktverzeichnis       Strg+Alt+I KIM-Verzeichnis       Strg+Alt+R Krankenblatt
+Strg+Alt+O Ordner (Anhänge)         Strg+Alt+E Empfangsbestätigung   Strg+Alt+B Betreff-Zeile
+Strg+Alt+M oberster Empfänger       Strg+Alt+F Brief-Vorschau        Strg+Alt+V Versenden/Drucken
+Esc        Abbrechen
+Strg+Alt darf zwischen zwei Tasten gehalten bleiben, z.B. für E und dann V.
+
+
+EINBLENDUNG
+----------------------------------------------------------------------------------------------------
+Strg+Alt eine halbe Sekunde halten: bis zum Loslassen stehen gelbe Schildchen an allen Stellen im
+aktiven Fenster, auf die gerade eine Taste wirken würde (Reiter, Filter mit ihrer Nummer, Pfeil zum
+Hochladen, Karteikarte, Diagnose-Kurzwahlen, Tagesübersicht, Briefversand).
+
+
+KALIBRIEREN (nur nötig, wenn ein Klick daneben geht)
+----------------------------------------------------------------------------------------------------
+Strg+Alt+Umsch+K / L / P / A
+                    Maus auf den Reiter "Kartei" / "Krankenblatt" / "ePA" / "ePAAbr" halten und drücken
+Strg+Alt+Umsch+^    Maus auf den ersten Filter ("Alle Einträge") halten und drücken
+Strg+Alt+Umsch+ eine andere Filtertaste (z.B. F12)
+                    Maus auf diesen Filter halten und drücken: ergibt den Zeilenabstand
+Strg+Alt+Umsch+A    in der Tagesübersicht: Maus auf die Spalte "Bereich" halten und drücken
+Strg+Alt+Umsch+D    Liste aller Controls im aktiven Fenster in die Zwischenablage und nach
+                    %APPDATA%\MOReiter\Fenster.txt (zum Einrichten neuer Tasten)
+
+
+{FARBE}
+ZUSATZFUNKTIONEN (farbig hinterlegt; nur, was in dieser Praxis eingerichtet ist)
+====================================================================================================
 
 {WENN Laufzettel}
 TASTEN IN MEDICAL OFFICE UND IM PATIENTENLAUFZETTEL
@@ -219,52 +271,7 @@ Dok=\<Nachname, Vorname, Geburtsdatum>). Die Patientennummer kommt vom Laufzette
 Medical Office (Name und Geburtsdatum müssen eindeutig sein); klappt etwas nicht, bleibt die Datei mit einer
 Meldung in p:\ liegen.
 {ENDE Portale}
-
-
-DIAGNOSEERFASSUNG
-----------------------------------------------------------------------------------------------------
-Ist das Fenster "Diagnoseerfassung" aktiv, wählen dieselben Tasten (^ 1 2 ... F12, Ziffernblock,
-Ziffernfolgen) statt der Filter die Diagnose-Kurzwahl-Knöpfe rechts: erst die linke Spalte von oben
-nach unten, dann die nächste. Hier wird bei Ziffernfolgen erst beim Loslassen gewählt.
-Die Knöpfe werden bei jedem Druck am Bildschirm gesucht, Kalibrieren ist nicht nötig.
-
-
-TAGESÜBERSICHT
-----------------------------------------------------------------------------------------------------
-Strg+Alt+A          bei "Offene To-Dos": die markierte Zeile als erledigt abhaken und die
-                    nachrückende Zeile markieren
-Alt+Pfeil hoch/runter
-                    in der Bereichsauswahl links den Eintrag über bzw. unter dem gelb umrandeten
-                    anklicken, danach rechts die oberste Zeile der Liste; Alt darf für mehrere Schritte
-                    gehalten bleiben
-
-
-BRIEFVERSAND (Fenster "MEDICAL OFFICE - Briefversand")
-----------------------------------------------------------------------------------------------------
-Strg+Alt+K Kontaktverzeichnis       Strg+Alt+I KIM-Verzeichnis       Strg+Alt+R Krankenblatt
-Strg+Alt+O Ordner (Anhänge)         Strg+Alt+E Empfangsbestätigung   Strg+Alt+B Betreff-Zeile
-Strg+Alt+M oberster Empfänger       Strg+Alt+F Brief-Vorschau        Strg+Alt+V Versenden/Drucken
-Esc        Abbrechen
-Strg+Alt darf zwischen zwei Tasten gehalten bleiben, z.B. für E und dann V.
-
-
-EINBLENDUNG
-----------------------------------------------------------------------------------------------------
-Strg+Alt eine halbe Sekunde halten: bis zum Loslassen stehen gelbe Schildchen an allen Stellen im
-aktiven Fenster, auf die gerade eine Taste wirken würde (Reiter, Filter mit ihrer Nummer, Pfeil zum
-Hochladen, Karteikarte, Diagnose-Kurzwahlen, Tagesübersicht, Briefversand).
-
-
-KALIBRIEREN (nur nötig, wenn ein Klick daneben geht)
-----------------------------------------------------------------------------------------------------
-Strg+Alt+Umsch+K / L / P / A
-                    Maus auf den Reiter "Kartei" / "Krankenblatt" / "ePA" / "ePAAbr" halten und drücken
-Strg+Alt+Umsch+^    Maus auf den ersten Filter ("Alle Einträge") halten und drücken
-Strg+Alt+Umsch+ eine andere Filtertaste (z.B. F12)
-                    Maus auf diesen Filter halten und drücken: ergibt den Zeilenabstand
-Strg+Alt+Umsch+A    in der Tagesübersicht: Maus auf die Spalte "Bereich" halten und drücken
-Strg+Alt+Umsch+D    Liste aller Controls im aktiven Fenster in die Zwischenablage und nach
-                    %APPDATA%\MOReiter\Fenster.txt (zum Einrichten neuer Tasten)
+{FARBE ENDE}
 
 
 AUFRUF VON AUSSEN (z.B. aus einem eigenen Programm)
