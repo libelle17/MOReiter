@@ -285,8 +285,8 @@ EINSTELLUNGEN (alles optional)
 Eigene Einstellungen und Kalibrierungen: %APPDATA%\MOReiter\MOReiter.ini. Was dort fehlt, kommt aus
 MOReiter-Praxis.ini neben MOReiter.exe (Einstellungen der Praxis, geschrieben von "MOReiter.exe Praxis";
 ein leerer Wert schaltet einen Eintrag der Vorgaben ab), dann aus MOReiter-Vorgaben.ini (allgemeine
-Voreinstellungen aus dem Repo), sonst gilt der eingebaute Wert. Alle drei haben denselben Aufbau;
-Kalibrieren schreibt nur in die eigene.
+Voreinstellungen aus dem Repo; fehlt sie, legt MOReiter die in die exe eingebettete Fassung wieder an), sonst
+gilt der eingebaute Wert. Alle drei haben denselben Aufbau; Kalibrieren schreibt nur in die eigene.
 [Allgemein]   EchteMaus=1        mit der echten Maus klicken statt per Fensternachricht
               Einblendung=500    ms Halten bis zu den Schildchen, 0 = nie
               FolgeZeit=2000     ms Pause, nach der eine Ziffernfolge neu beginnt

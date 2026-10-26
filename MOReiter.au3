@@ -1366,6 +1366,7 @@ EndFunc
 ; [Aufrufe] aus der eigenen INI und MOReiter-Vorgaben.ini (die eigene geht vor) nach $gAufrufe; Schluessel
 ; "Strg+P" bzw. "Strg+Umsch+P" (nur Buchstaben), Wert die Befehlszeile, {pat} wird zu "Nachname;Vorname;TT.MM.JJJJ"
 Func AufrufeLaden()
+	VorgabenPruefen()
 	; eine Taste gilt aus der ersten Datei, die sie nennt; ein leerer Wert schaltet sie dort ab
 	Local $n = 0, $quelle[3] = [$Ini, $IniPraxis, $IniVorgaben], $gesehen = "|"
 	ReDim $gAufrufe[0][4]
@@ -1389,6 +1390,19 @@ Func AufrufeLaden()
 	Next
 	$gAufrufProtokoll = (Einst("Aufrufe", "Protokoll", "0") = "1")
 	If $gAufrufProtokoll Then Protokoll("MOReiter gestartet (" & @ScriptFullPath & ", Stand " & Stand() & "), " & $n & " Aufrufe eingerichtet")
+EndFunc
+
+; fehlt MOReiter-Vorgaben.ini neben der exe (geloescht, nur die exe weitergegeben), die beim Kompilieren eingebettete
+; Fassung dorthin schreiben; False, wenn sie fehlt und sich nicht anlegen laesst
+Func VorgabenPruefen()
+	If FileExists($IniVorgaben) Then Return True
+	If FileInstall("MOReiter-Vorgaben.ini", $IniVorgaben) And FileExists($IniVorgaben) Then
+		Protokoll("MOReiter-Vorgaben.ini fehlte, aus der exe wiederhergestellt: " & $IniVorgaben)
+		Hinweis("MOReiter-Vorgaben.ini fehlte und ist wiederhergestellt")
+		Return True
+	EndIf
+	Protokoll("MOReiter-Vorgaben.ini fehlt und l" & ChrW(228) & "sst sich nicht anlegen: " & $IniVorgaben)
+	Return False
 EndFunc
 
 Func Protokoll($txt)
@@ -4115,7 +4129,11 @@ EndFunc
 ; Patientenlaufzettel (Dateilese und FCAufruf: Strg+P, Strg+Umsch+P, Strg+A, Strg+I); Strg+Umsch+T bleibt, solange
 ; es ein Portal gibt. Reihenfolge nach Verbreitung; was von einem Kaestchen abhaengt, ist grau, solange es aus ist
 Func PraxisEinrichten()
+	; ohne Vorgaben gibt es keine Programmaufrufe und Portal-Adressen, die sich einschalten liessen (AufrufeLaden legt
+	; sie aus der exe wieder an, wenn das geht)
 	AufrufeLaden()
+	If Not FileExists($IniVorgaben) Then Return PraxisFehlt($IniVorgaben & " fehlt und l" & ChrW(228) & "sst sich nicht anlegen. Bitte aus dem Repo " & _
+			"wiederherstellen (https://github.com/libelle17/MOReiter), sonst lassen sich Labor, Zuckerportale, Smart Pix und Laufzettel nicht einschalten.")
 	Local $an = PraxisStand()
 	; 23 Zeilen zu 28 Pixeln ab y = 52, darunter die Knoepfe
 	Local $g = GUICreate("MOReiter einrichten", 900, 760), $y = 52
