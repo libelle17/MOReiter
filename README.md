@@ -1,20 +1,23 @@
 # MOReiter – Tastenkürzel für Medical Office
 
-MOReiter läuft unauffällig im Hintergrund (Symbol im Infobereich der Taskleiste) und bedient
-Medical Office per Tastatur, wo es sonst nur die Maus gibt, zum Beispiel:
+MOReiter läuft unauffällig im Hintergrund (Symbol im Infobereich der Taskleiste) und bedient Medical Office per
+Tastatur an Stellen, wo es sonst nur die Maus gibt, zum Beispiel:
 
-- Reiter wechseln: Strg+Alt+L (Krankenblatt), Strg+Alt+K (Kartei/Krankenblatt), Strg+Alt+P (ePA/ePAAbr)
-- Krankenblattfilter (Filter-Reiter links oder unten) und Diagnose-Kurzwahl: Strg+Alt+1, 2, 3 … bzw. Ziffernblock
-- Termine des Patienten zeigen, solange Strg+Alt+T gehalten wird – aus jedem Programm
-- Tagesübersicht: Strg+Alt+A hakt die markierte offene Aufgabe ab
-- Briefversand, ePA-Hochladen, zuletzt geöffnete Patienten, Hauptmenü …
+- Anwenderansicht wechseln: Strg+Alt+L (Krankenblatt), Strg+Alt+K (Kartei/Krankenblatt), Strg+Alt+P (ePA/ePAAbr),
+- Krankenblattfilter (Filter-Reiter links oder unten): Strg+Alt+1, 2, 3 … bzw. Ziffernblock,
+- Diagnose-Kurzwahl: Strg+Alt+1, 2, 3 … bzw. Ziffernblock,
+- Termine des Patienten zeigen, solange Strg+Alt+T gehalten wird – aus jedem Programm,
+- Tagesübersicht: Strg+Alt+A hakt die markierte offene Aufgabe ab,
+- Briefversand, ePA-Hochladen, zuletzt geöffnete Patienten, Hauptmenü …,
+- Strg+Alt zeigt farbig, welche Tasten in der aktuellen Ansicht was bewirken,
 - Strg+Alt+F1 zeigt die Hilfe mit allen Tasten, die auf diesem PC eingerichtet sind
 
 Zusatzfunktionen, je nach Praxis einzuschalten:
 
-- Laborbefunde aus onlinebefunde.labor-staber.de (Strg+O)
+- Laborbefunde aus onlinebefunde.labor-staber.de (Strg+O) downloaden und ggf. einsortieren,
 - Zuckerberichte aus LibreView, Dexcom Clarity, Glooko, YourLoops und EasyView (Strg+L, D, G, Y, E;
   Strg+Z ruft alle Portale nach den Markierungen des Patienten ab), Ablage und Umbenennung der PDFs
+  (den Berichtszeitraum für den Dateinamen liest pdftotext.exe aus dem PDF, s. Voraussetzungen)
 - Accu-Chek Smart Pix: Patient wählen bzw. Patientenliste mit Medical Office abgleichen
 - eigene Programme mit Name und Geburtsdatum des Patienten aufrufen (Abschnitt `[Aufrufe]`)
 
@@ -28,6 +31,8 @@ unterstützt. Benutzung auf eigene Verantwortung, ohne Gewährleistung (s. [LICE
   www.autoitscript.com in den Unterordner `AutoIt3` (ohne Installation, ohne Administratorrechte)
 - für Labor und Zuckerportale: Firefox; das Add-on Tampermonkey und die Benutzerskripte bietet MOReiter
   beim ersten Abruf selbst zur Installation an
+- für den Berichtszeitraum in den Dateinamen der Zuckerberichte: `pdftotext.exe` aus den kostenlosen Xpdf-Werkzeugen
+  (www.xpdfreader.com); fehlt es, lädt MOReiter es beim Einrichten auf Wunsch selbst herunter
 - für Strg+Z, Strg+Alt+D und den Smart Pix-Abgleich: Lesezugriff auf die Datenbank von Medical Office
   (MySQL ODBC 8.0 Unicode Driver und Zugangsdaten, s. `[Allgemein] Zugang=` in `MOReiter-Vorgaben.ini`)
 
@@ -50,7 +55,7 @@ unterstützt. Benutzung auf eigene Verantwortung, ohne Gewährleistung (s. [LICE
 5. **Start:** MOReiter startet von `%APPDATA%\MOReiter` aus und erscheint als Symbol im Infobereich der
    Taskleiste (ggf. unter dem kleinen Pfeil). Für den Start beim Anmelden legt `Einrichten.bat` eine Verknüpfung
    im Autostart-Ordner des Benutzers an (abzuschalten im Fenster „MOReiter einrichten“). Es läuft immer nur
-   einmal; ein zweiter Start beendet sich still.
+   einmal gleichzeitig; ein Doppelaufruf beendet sich still.
    **Virenschutz:** Weil MOReiter die Tastatur auf seine Kürzel hin beobachtet, halten manche Virenscanner es
    für verdächtig und entfernen `MOReiter.exe` stillschweigend (dann läuft es nach `Einrichten.bat` nicht, und
    Strg+Alt+F1 tut nichts). Dann die Datei aus der Quarantäne zurückholen und für die Ordner von MOReiter
