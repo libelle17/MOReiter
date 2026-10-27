@@ -113,6 +113,20 @@ Die Benutzerskripte arbeiten in der eigenen, im Firefox angemeldeten Sitzung, wi
 Mensch; Kennwörter speichert MOReiter nicht (sie kommen aus dem Kennwortspeicher von Firefox). Bitte
 prüfen Sie selbst, ob die Nutzungsbedingungen des jeweiligen Portals diese Art des Abrufs erlauben.
 
+## Die Dateien im Repo
+
+| Datei | wofür |
+|---|---|
+| `Kompilieren.bat` | erstellt `MOReiter.exe` (lädt bei Bedarf AutoIt3), fragt beim ersten Mal die Einstellungen ab und startet `Einrichten.bat` |
+| `Einrichten.bat` | kopiert MOReiter nach `%APPDATA%\MOReiter`, legt die Autostart-Verknüpfung an und startet es |
+| `Einstellungen.bat` | ändert später die Einstellungen der Praxis (Fenster „MOReiter einrichten“) und richtet neu ein |
+| `MOReiter.au3` | Quelltext |
+| `MOReiter-Hilfe.txt` | Hilfetext für Strg+Alt+F1, wird in die exe eingebettet |
+| `MOReiter-Vorgaben.ini` | Voreinstellungen mit Erklärungen zu jedem Eintrag |
+| `MOReiter.ico` | Programmsymbol |
+| `MOReiter-*.user.js` | Benutzerskripte für Tampermonkey (Labor und Zuckerportale), installiert MOReiter selbst |
+| `LICENSE` | Lizenz (GPL-3.0) |
+
 ## Fragen und Fehler
 
 Bitte als Issue hier auf GitHub melden.
