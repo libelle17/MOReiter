@@ -32,6 +32,14 @@ Strg+Alt+U          ("unten") die Liste im Container Karteikarte aktivieren, so 
 Strg+Umsch+G        Karteikarte: fragt ein Datum ab (z.B. 3.5.24, 5.24 = Monatsanfang, 2024) und blättert
                     zur ersten Zeile ab diesem Tag (liest die Datumsspalte mit der Texterkennung von
                     Windows); gibt es an dem Tag nichts, zum nächsten Tag mit Einträgen
+Strg+Umsch+F        Karteikarte: fragt ein Typ-Kürzel ab (Spalte "Typ", z.B. bd, rr, tb) und springt zum
+                    nächstälteren Eintrag dieses Typs oberhalb der markierten Zeile, nochmals gedrückt
+                    zum davor; gibt es keinen älteren (z.B. von ganz oben aus), sucht es nach unten und
+                    bleibt dabei, solange die Markierung auf dem gefundenen Eintrag steht; "+tb" sucht
+                    nach unten, "-tb" nach oben; "a:edm" findet Typen, die mit edm anfangen, "t:dmp"
+                    solche, die dmp enthalten (auch kombiniert, z.B. "+a:edm"). Kennt die
+                    Datenbank keinen solchen Eintrag, wird gar nicht geblättert, sonst direkt zu dessen
+                    Tag und Uhrzeit (ohne Datenbank seitenweise, Esc bricht ab)
 Strg+Alt+T          aus jedem Programm: die Termine des Patienten zeigen, solange Strg+Alt+T gehalten
                     wird (Medical Office nach vorn, F6, Alt+T; beim Loslassen F6 und zurück ins
                     vorige Programm)
@@ -336,7 +344,9 @@ gilt der eingebaute Wert. Alle drei haben denselben Aufbau; Kalibrieren schreibt
               Warten=400         ms nach dem Reiterwechsel
               X, Y, Abstand      links: Lage des ersten Filters und Zeilenabstand (schreibt das Kalibrieren)
 [Karteikarte] Art=Klick          Strg+Alt+U klickt in die markierte Zeile statt nur den Fokus zu setzen
-              DatumBreite=62     Strg+Umsch+G: Breite der Datumsspalte in Pixeln
+              ZeitAb=54, TypAb=98, TypBis=144   Strg+Umsch+G/F: Beginn der Spalten Zeit und Typ, Ende
+                                 der Spalte Typ, in Pixeln vom linken Rand der Liste
+              TypSeiten=300      Strg+Umsch+F ohne Datenbank: höchstens so viele Seiten
 [Termine]     Warten=200         ms zwischen F6 und Alt+T
 [Labor]       Url=...            Adresse der Patientensuche; ohne sie ist der Laborabruf abgeschaltet
               Titel=Onlinebefunde   Seitentitel des Portals

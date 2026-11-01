@@ -7,7 +7,11 @@ Tastatur an Stellen, wo es sonst nur die Maus gibt, zum Beispiel:
 - Krankenblattfilter (Filter-Reiter links oder unten): Strg+Alt+1, 2, 3 … bzw. Ziffernblock,
 - Diagnose-Kurzwahl: Strg+Alt+1, 2, 3 … bzw. Ziffernblock,
 - Termine des Patienten zeigen, solange Strg+Alt+T gehalten wird – aus jedem Programm,
-- Tagesübersicht: Strg+Alt+A hakt die markierte offene Aufgabe ab,
+- Tagesübersicht: Strg+Alt+A hakt die markierte offene Aufgabe ab; Strg+P, Strg+Umsch+P, Strg+A und Strg+I
+  (Laufzettel, Arztbrief, FreeCommander) gehen dort mit dem Patienten der markierten Zeile,
+- Karteikarte: Strg+Umsch+G blättert zu einem abgefragten Datum, Strg+Umsch+F springt zum vorigen (bzw.
+  von oben aus zum nächsten) Eintrag eines abgefragten Typs (auch nur dessen Anfang oder ein Teil davon) (Spalte „Typ“, mit Blick in die Datenbank, ob es überhaupt einen gibt);
+  beide lesen die Liste mit der Texterkennung von Windows,
 - Briefversand, ePA-Hochladen, zuletzt geöffnete Patienten, Hauptmenü …,
 - Strg+Alt zeigt farbig, welche Tasten in der aktuellen Ansicht was bewirken,
 - Strg+Alt+F1 zeigt die Hilfe mit allen Tasten, die auf diesem PC eingerichtet sind
@@ -33,7 +37,7 @@ unterstützt. Benutzung auf eigene Verantwortung, ohne Gewährleistung (s. [LICE
   beim ersten Abruf selbst zur Installation an
 - für den Berichtszeitraum in den Dateinamen der Zuckerberichte: `pdftotext.exe` aus den kostenlosen Xpdf-Werkzeugen
   (www.xpdfreader.com); fehlt es, lädt MOReiter es beim Einrichten auf Wunsch selbst herunter
-- für Strg+Z, Strg+Alt+D und den Smart Pix-Abgleich: Lesezugriff auf die Datenbank von Medical Office
+- für Strg+Z, Strg+Umsch+F, Strg+Alt+D und den Smart Pix-Abgleich: Lesezugriff auf die Datenbank von Medical Office
   (MySQL ODBC 8.0 Unicode Driver und Zugangsdaten, s. `[Allgemein] Zugang=` in `MOReiter-Vorgaben.ini`)
 
 ## Einrichten

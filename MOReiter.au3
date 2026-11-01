@@ -37,6 +37,8 @@
 ;                              erledigt abhaken und die nachrueckende Zeile markieren
 ;            Strg+Umsch+G      ([Aufrufe] Strg+Umsch+G=Datum) Karteikarte: fragt ein Datum ab, blaettert zur
 ;                              ersten Zeile ab diesem Tag (Datumsspalte per Texterkennung) und klickt sie an
+;            Strg+Umsch+F      ([Aufrufe] Strg+Umsch+F=Typ) Karteikarte: fragt ein Typ-Kuerzel ab und springt zum
+;                              naechstaelteren Eintrag dieses Typs (Datenbank, Spalte "Typ" per Texterkennung)
 ;            Strg+P, Strg+Umsch+P, Strg+A, Strg+I (alle [Aufrufe] mit {pat}) auch in der Tagesuebersicht, mit
 ;                              dem Patienten der markierten Zeile (aus der Statuszeile unten links)
 ;            Strg+Alt+Umsch+A  in der Tagesuebersicht: Maus auf die Spalte "Bereich" halten und druecken
@@ -250,6 +252,11 @@ Global $gSmartPixWarnung = ""
 Global $gMeldung = ""
 ; Strg+Umsch+G: zuletzt eingegebenes Datum; laufende Texterkennung (PowerShell) und deren noch nicht gelesene Ausgabe
 Global $gKarteiDatum = "", $gOcrPid = 0, $gOcrPuffer = ""
+; Strg+Umsch+F: zuletzt gesuchter Typ, Kuerzel -> Eintragsarten aus mosystem (einmal je Lauf), Datumssuche nur zum
+; Merken der Stelle statt Klick und deren Ergebnis
+Global $gKarteiTyp = "", $gTypArten = 0, $gNurSuchen = False, $gTrefferY = 0, $gTrefferDatum = ""
+; Strg+Umsch+F: Richtung der letzten Suche (1 = abwaerts) und wann; Datenbank-Ergebnis der letzten zwei Minuten
+Global $gTypPatNr = 0, $gTypCacheNr = 0, $gTypUngenau = False, $gSucheLaeuft = False, $gSucheAbbruch = False, $gTypArt = "", $gVScroll = -1, $gTypLetztY = -999, $gTypRichtung = -1, $gTypZeit = 0, $gTypCache = 0, $gTypCacheSchluessel = "", $gTypCacheZeit = 0
 ; Ablaufprotokoll der Smart Pix-Liste (Pfad, waehrend des Durchgangs; "" = keins)
 Global $gSpLog = "", $gSpNochmal = False, $gSpTabs = 0
 ; Geburtsdatum in der Smart Pix-Liste: Tag, Monat, Jahr (2- oder 4-stellig), getrennt durch Punkte (auch doppelt),
@@ -440,6 +447,12 @@ Func TastenHook($nCode, $wParam, $lParam)
 				Return 1
 			EndIf
 			; Strg+Alt+Esc in jedem Programm: neu starten; nicht ueber $gAufgabe, das wartet auf die laufende Aufgabe
+			; Esc waehrend Strg+Umsch+F/G: nur die Suche abbrechen, nicht an Medical Office weitergeben (meldet sonst ab)
+			If $vk = 0x1B And $gSucheLaeuft Then
+				$gSucheAbbruch = True
+				If Not StringInStr($gUnten, "," & $vk & ",") Then $gUnten &= "," & $vk & ","
+				Return 1
+			EndIf
 			If $vk = 0x1B And StrgAlt() Then
 				$gNeustartWeg = "Hook"
 				$gNeustart = True
@@ -484,10 +497,10 @@ Func HookAufgabe($vk)
 				Local $mo = MOAktiv(), $text = $mo ? TextFokus() : False
 				If $gAufrufProtokoll Then Protokoll($gAufrufe[$i][0] & ": " & ($mo ? "Medical Office" : "nicht Medical Office (" & _
 						_WinAPI_GetClassName(_WinAPI_GetForegroundWindow()) & " """ & _WinAPI_GetWindowText(_WinAPI_GetForegroundWindow()) & """)") & _
-						($mo ? ", " & $gFokusInfo : "") & " -> " & (($mo And (Not $text Or $gAufrufe[$i][3] = "Datum")) ? "Aufruf" : "durchgelassen"))
+						($mo ? ", " & $gFokusInfo : "") & " -> " & (($mo And (Not $text Or $gAufrufe[$i][3] = "Datum" Or $gAufrufe[$i][3] = "Typ")) ? "Aufruf" : "durchgelassen"))
 				If $mo And Not $text Then Return "Aufruf:" & $i
-				; Strg+Umsch+G=Datum auch aus einem Eingabefeld (z.B. "Suchtext" der Karteikarte, wo der Cursor oft steht)
-				If $mo And $gAufrufe[$i][3] = "Datum" Then Return "Aufruf:" & $i
+				; Strg+Umsch+G=Datum und Strg+Umsch+F=Typ auch aus einem Eingabefeld (z.B. "Suchtext" der Karteikarte, wo der Cursor oft steht)
+				If $mo And ($gAufrufe[$i][3] = "Datum" Or $gAufrufe[$i][3] = "Typ") Then Return "Aufruf:" & $i
 				; Befehlszeilen mit {pat} (Laufzettel, FreeCommander ...) auch in der Tagesuebersicht, mit dem
 				; Patienten der markierten Zeile (aus der Statuszeile)
 				If StringInStr($gAufrufe[$i][3], "{pat}") And TagesAktiv() Then Return "Aufruf:" & $i
@@ -1521,6 +1534,8 @@ Func Aufruf($i)
 	If $befehl = "Zucker" Then Return Zucker()
 	; Strg+Umsch+G=Datum: Karteikarte zu einem Datum blaettern
 	If $befehl = "Datum" Then Return KarteiDatum()
+	; Strg+Umsch+F=Typ: Karteikarte zum naechstaelteren Eintrag eines Typs
+	If $befehl = "Typ" Then Return KarteiTyp()
 	Return AufrufBefehl($gAufrufe[$i][0], $befehl)
 EndFunc
 
@@ -4160,6 +4175,8 @@ Func AufrufBeschreibung($b)
 			Return "alle Zuckerportale nach den Markierungen"
 		Case "Datum"
 			Return "Karteikarte: zu einem Datum bl" & ChrW(228) & "ttern"
+		Case "Typ"
+			Return "Karteikarte: voriger Eintrag eines Typs (Spalte Typ)"
 	EndSwitch
 	If $b = "Portal:Labor" Then Return "Onlinebefunde des Labors im Firefox"
 	If StringLeft($b, 7) = "Portal:" Then Return "Portal " & StringTrimLeft($b, 7) & " im Firefox"
@@ -6131,31 +6148,35 @@ EndFunc
 ; klickt sie an. Die Liste hat keine ansprechbaren Zeilen, daher: Datumsspalte per Texterkennung lesen
 ; (KarteiSeite), mit Bild auf/ab blaettern, erst mit wachsenden Spruengen, nach dem Ueberschiessen mit
 ; halbierten zurueck, bis das Datum im Bild ist oder zwischen zwei benachbarten Seiten liegt.
-; [Karteikarte] DatumBreite = Breite der Datumsspalte in Pixeln (vom linken Rand der Liste)
+; [Karteikarte] ZeitAb, TypAb, TypBis = Spaltengrenzen in Pixeln vom linken Rand der Liste (s. KarteiZeilen)
 Func KarteiDatum()
 	Local $hWnd = WinGetHandle($MOFenster)
 	If @error Then Return MOStarten()
 	If Not ModifierLos() Then Return Meldung("Strg und Umschalt bitte loslassen")
 	Local $hGrid = KarteiListe($hWnd)
 	If Not $hGrid Then Return Meldung("Keine Karteikarte sichtbar")
-	Local $ein = InputBox("MOReiter", "Zu welchem Datum bl" & ChrW(228) & "ttern?" & @CRLF & _
-			"z.B. 3.5.24, 3.5.2024, 5.24 (Monatsanfang) oder 2024 (Jahresanfang)", $gKarteiDatum, "", 340, 150)
+	Local $ein = Rueckfrage("Zu welchem Datum bl" & ChrW(228) & "ttern?" & @CRLF & _
+			"z.B. 3.5.24, 3.5.2024, 5.24 (Monatsanfang) oder 2024 (Jahresanfang)", $gKarteiDatum)
 	If @error Then Return False
 	Local $ziel = DatumEingabe($ein)
 	If $ziel = "" Then Return Meldung("Datum nicht verstanden: " & $ein)
 	$gKarteiDatum = $ein
 	Local $zielText = DatumText($ziel)
+	$gTypPatNr = 0
 	WinActivate($hWnd)
 	WinWaitActive($hWnd, "", 2)
 	ControlFocus($hWnd, "", $hGrid)
 	HinweisStehend("Bl" & ChrW(228) & "ttere zum " & $zielText & " ...")
-	Local $fehler = OcrStarten()
+	Local $fehler = OcrBereit()
 	If $fehler <> "" Then
 		ToolTip("")
 		Return Meldung("Texterkennung nicht gestartet: " & $fehler)
 	EndIf
+	$gSucheAbbruch = False
+	$gSucheLaeuft = True
 	Local $erg = KarteiDatumSuchen($hWnd, $hGrid, $ziel, $zielText)
-	OcrBeenden()
+	$gSucheLaeuft = False
+	OcrSpaeterBeenden()
 	ToolTip("")
 	If $erg <> "" Then Return Meldung($erg)
 	Return True
@@ -6163,8 +6184,13 @@ EndFunc
 
 ; eigentliche Suche; Rueckgabe "" (gefunden und angeklickt, ggf. mit Hinweis) oder Fehlertext
 Func KarteiDatumSuchen($hWnd, $hGrid, $ziel, $zielText)
-	Local $seite, $richtung = 0, $schritt = 1, $gewechselt = False, $vorher = 0
+	Local $seite, $richtung = 0, $schritt = 1, $gewechselt = False, $vorher = 0, $nachOben = 0
+	Local $g = WinGetPos($hGrid)
+	If @error Then Return "Karteikarte nicht sichtbar"
+	; Medical Office schreibt das Datum auch in die oberste sichtbare Zeile, wenn der Tag weiter oben beginnt
+	Local $obersteZeile = $g[1] + $KbKopfHoehe + 25
 	For $runde = 1 To 60
+		If $gSucheAbbruch Then Return "Suche abgebrochen"
 		Local $summe = KarteiSeite($hGrid, $seite)
 		If @error Then Return $seite
 		Local $n = UBound($seite)
@@ -6183,9 +6209,24 @@ Func KarteiDatumSuchen($hWnd, $hGrid, $ziel, $zielText)
 		ElseIf $ziel > $seite[$n - 1][0] Then
 			$neu = 1
 		Else
-			; im Bild: erste Zeile mit Datum >= Ziel
+			; im Bild: erste Zeile mit Datum >= Ziel; ist es die oberste Zeile, kann der Tag (bzw. das Ziel) auch
+			; darueber liegen: eine Seite hoeher nachsehen (ausser ganz oben in der Karteikarte)
 			For $i = 0 To $n - 1
-				If $seite[$i][0] >= $ziel Then Return KarteiZeileKlicken($hWnd, $hGrid, $seite[$i][1], $seite[$i][0], $ziel, $zielText)
+				If $seite[$i][0] < $ziel Then ContinueLoop
+				If $seite[$i][1] < $obersteZeile And $nachOben < 5 Then
+					$nachOben += 1
+					KarteiBlaettern($hGrid, -1, 1)
+					Local $neuSumme = KarteiSeite($hGrid, $seite)
+					If @error Then Return $seite
+					If $neuSumme <> $summe Then
+						$vorher = 0
+						$richtung = -1
+						$schritt = 1
+						$gewechselt = True
+						ContinueLoop 2
+					EndIf
+				EndIf
+				Return KarteiZeileKlicken($hWnd, $hGrid, $seite[$i][1], $seite[$i][0], $ziel, $zielText)
 			Next
 		EndIf
 		If $n > 0 And $amEnde And $neu = $richtung Then
@@ -6210,6 +6251,12 @@ Func KarteiDatumSuchen($hWnd, $hGrid, $ziel, $zielText)
 		ElseIf $richtung <> 0 And Not $gewechselt Then
 			$schritt = ($schritt < 64) ? $schritt * 2 : 64
 		EndIf
+		; erster Sprung: Zahl der Eintraege zwischen sichtbarer Seite und Ziel aus der Datenbank (wenn Strg+Umsch+F den
+		; Patienten schon kennt), durch die Zeilen je Seite; danach wie gehabt verdoppeln bzw. halbieren
+		If $runde = 1 And $gTypPatNr > 0 And $n > 0 And $neu <> 0 Then
+			Local $sch = KarteiSchaetzung($hGrid, ($neu < 0) ? $seite[0][0] : $seite[$n - 1][0], $ziel)
+			If $sch > 1 Then $schritt = $sch
+		EndIf
 		$richtung = $neu
 		KarteiBlaettern($hGrid, $richtung, $schritt)
 	Next
@@ -6218,9 +6265,15 @@ EndFunc
 
 ; klickt die Zeile in Hoehe $y (Bildschirm) in der Datumsspalte an; Hinweis, wenn es nicht genau das Ziel ist
 Func KarteiZeileKlicken($hWnd, $hGrid, $y, $datum, $ziel, $zielText, $davor = False)
+	; Strg+Umsch+F: nur die Stelle merken
+	If $gNurSuchen Then
+		$gTrefferY = $y
+		$gTrefferDatum = $datum
+		Return ""
+	EndIf
 	Local $g = WinGetPos($hGrid)
 	If @error Then Return "Karteikarte nicht sichtbar"
-	If Not KlickPunkt($hWnd, $g[0] + 20, $y, "Karteikarte verdeckt") Then Return $gMeldung
+	If Not KarteiKlick($hWnd, $g[0] + 20, $y) Then Return $gMeldung
 	If $datum = $ziel Then
 		Hinweis($zielText)
 	ElseIf $davor Then
@@ -6233,15 +6286,37 @@ Func KarteiZeileKlicken($hWnd, $hGrid, $y, $datum, $ziel, $zielText, $davor = Fa
 	Return ""
 EndFunc
 
-; $anzahl mal Bild auf ($richtung -1) bzw. ab (1) an die Liste schicken und warten, bis sie ruhig ist
+; $anzahl Seiten auf ($richtung -1) bzw. ab (1) blaettern und warten, bis die Liste ruhig ist: zuerst ueber die
+; Bildlaufleiste (WM_VSCROLL, bewegt nur die Ansicht, die Markierung bleibt, wo sie war); tut sich damit nichts,
+; mit Bild auf/ab (das schiebt die Markierung mit)
 Func KarteiBlaettern($hGrid, $richtung, $anzahl)
+	Local $g = WinGetPos($hGrid)
+	If @error Then Return
+	Local $vorher = PixelChecksum($g[0], $g[1] + $KbKopfHoehe, $g[0] + $g[2] - 1, $g[1] + $g[3] - 1)
+	If $gVScroll <> 0 Then
+		For $i = 1 To $anzahl
+			_WinAPI_PostMessage($hGrid, 0x115, ($richtung < 0) ? 2 : 3, 0) ; WM_VSCROLL, SB_PAGEUP / SB_PAGEDOWN
+		Next
+		If KarteiRuhig($hGrid) <> $vorher Then
+			$gVScroll = 1
+			Return
+		EndIf
+		; die Bildlaufleiste hat schon einmal gewirkt: dann ist hier nur Anfang bzw. Ende erreicht (Bild auf/ab
+		; schoebe sonst die Markierung weiter und die Ansicht spraenge zu ihr zurueck)
+		If $gVScroll = 1 Then Return
+	EndIf
 	Local $vk = ($richtung < 0) ? 0x21 : 0x22 ; VK_PRIOR, VK_NEXT
 	For $i = 1 To $anzahl
 		_WinAPI_PostMessage($hGrid, 0x100, $vk, 0) ; WM_KEYDOWN
 		_WinAPI_PostMessage($hGrid, 0x101, $vk, 0xC0000001) ; WM_KEYUP
 	Next
+	If KarteiRuhig($hGrid) <> $vorher Then $gVScroll = 0
+EndFunc
+
+; wartet, bis sich die Liste nicht mehr aendert (hoechstens 3 s); Rueckgabe ihre Pruefsumme
+Func KarteiRuhig($hGrid)
 	Local $g = WinGetPos($hGrid)
-	If @error Then Return
+	If @error Then Return 0
 	Local $t = TimerInit(), $alt = 0, $gleich = 0
 	Sleep(60)
 	While TimerDiff($t) < 3000
@@ -6255,56 +6330,1017 @@ Func KarteiBlaettern($hGrid, $richtung, $anzahl)
 		EndIf
 		Sleep(60)
 	WEnd
+	Return $alt
 EndFunc
 
-; Datumsspalte der sichtbaren Liste lesen: $seite[n][2] = JJJJMMTT, Bildschirm-y der Zeilenmitte (von oben nach
-; unten); Rueckgabe Pruefsumme der Spalte (zum Erkennen von Anfang/Ende), bei Fehler @error und $seite = Text
+; Datumsspalte der sichtbaren Liste: $seite[n][2] = JJJJMMTT, Bildschirm-y (von oben nach unten), nur Zeilen mit
+; Datum; Rueckgabe Pruefsumme (zum Erkennen von Anfang/Ende), bei Fehler @error und $seite = Text
 Func KarteiSeite($hGrid, ByRef $seite)
-	Local $g = WinGetPos($hGrid)
+	Local $z = 0
+	Local $summe = KarteiZeilen($hGrid, $z)
 	If @error Then
-		$seite = "Karteikarte nicht sichtbar"
+		$seite = $z
 		Return SetError(1, 0, 0)
 	EndIf
-	Local $b = Int(Einst("Karteikarte", "DatumBreite", "62"))
-	Local $x1 = $g[0] + 1, $y1 = $g[1] + $KbKopfHoehe, $x2 = $g[0] + $b, $y2 = $g[1] + $g[3] - 2
-	Local $summe = PixelChecksum($x1, $y1, $x2, $y2)
-	Local $bild = @AppDataDir & "\MOReiter\Karteidatum.png"
-	DirCreate(@AppDataDir & "\MOReiter")
-	_ScreenCapture_Capture($bild, $x1, $y1, $x2, $y2, False)
-	Local $woerter = OcrLesen($bild)
-	If @error Then
-		$seite = "Texterkennung: " & $woerter
-		Return SetError(1, 0, 0)
-	EndIf
-	Local $erg[0][2], $jj = Int(StringRight(@YEAR, 2))
-	For $w In StringSplit(StringStripCR($woerter), @LF, 2)
-		Local $f = StringSplit($w, ";", 2)
-		If UBound($f) < 4 Then ContinueLoop
-		; Rest der Zeile (falls die Spalte "Zeit" angeschnitten ist) stoert nicht
-		Local $m = StringRegExp(StringStripWS($f[3], 8), "^\D?(\d{1,2})[.,](\d{1,2})[.,](\d{4}|\d{2})", 1)
-		If @error Then ContinueLoop
-		Local $t = Int($m[0]), $mo = Int($m[1]), $j = Int($m[2])
-		If $t < 1 Or $t > 31 Or $mo < 1 Or $mo > 12 Then ContinueLoop
-		If $j < 100 Then $j += ($j <= $jj + 1) ? 2000 : 1900
+	Local $erg[0][2]
+	For $i = 0 To UBound($z) - 1
+		If $z[$i][0] = "" Then ContinueLoop
 		Local $n = UBound($erg)
 		ReDim $erg[$n + 1][2]
-		$erg[$n][0] = StringFormat("%04d%02d%02d", $j, $mo, $t)
-		$erg[$n][1] = $y1 + Int($f[1]) + Int(Int($f[2]) / 2)
-	Next
-	; nach y sortieren (die Texterkennung liefert Zeilen meist schon von oben nach unten)
-	For $i = 1 To UBound($erg) - 1
-		Local $d = $erg[$i][0], $y = $erg[$i][1], $k = $i - 1
-		While $k >= 0
-			If $erg[$k][1] <= $y Then ExitLoop
-			$erg[$k + 1][0] = $erg[$k][0]
-			$erg[$k + 1][1] = $erg[$k][1]
-			$k -= 1
-		WEnd
-		$erg[$k + 1][0] = $d
-		$erg[$k + 1][1] = $y
+		$erg[$n][0] = $z[$i][0]
+		$erg[$n][1] = $z[$i][3]
 	Next
 	$seite = $erg
 	Return $summe
+EndFunc
+
+; Strg+Umsch+F ([Aufrufe] Strg+Umsch+F=Typ): fragt ein Typ-Kuerzel ab (Spalte "Typ", z.B. bd, rr, tb) und springt
+; ab der markierten Zeile zum naechstaelteren Eintrag dieses Typs (ohne Markierung vom unteren Rand aus); gibt es
+; keinen aelteren (z.B. weil man ganz oben anfaengt), sucht es nach unten und bleibt beim naechsten Druck mit
+; demselben Typ dabei; "+" bzw. "-" vor dem Kuerzel erzwingt die Richtung. Zuerst sieht es im Bild nach; nur wenn
+; dort nichts ist, fragt es die Datenbank (TypEintraege): gibt es keinen Eintrag des Typs, wird gar nicht
+; geblaettert, sonst kennt es Tag und Uhrzeit und springt mit der Datumssuche (Strg+Umsch+G) direkt dorthin.
+; Ohne Datenbank (oder bei einem dort unbekannten Kuerzel) blaettert es seitenweise (Esc bricht ab).
+; [Karteikarte] TypBis = rechter Rand der Spalte "Typ" in Pixeln vom linken Rand der Liste,
+; TypSeiten = hoechstens so viele Seiten ohne Datenbank
+Func KarteiTyp()
+	Local $hWnd = WinGetHandle($MOFenster)
+	If @error Then Return MOStarten()
+	If Not ModifierLos() Then Return Meldung("Strg und Umschalt bitte loslassen")
+	Local $hGrid = KarteiListe($hWnd)
+	If Not $hGrid Then Return Meldung("Keine Karteikarte sichtbar")
+	Local $ein = Rueckfrage("Welcher Typ (Spalte ""Typ"")? z.B. bd, rr, tb; a:edm = beginnt mit edm, t:dmp = enth" & ChrW(228) & "lt dmp" & @CRLF & _
+			"Gesucht wird ab der markierten Zeile nach oben, gibt es dort keinen mehr nach unten;" & @CRLF & _
+			"+ davor: nach unten, - davor: nach oben (z.B. +a:edm)", $gKarteiTyp)
+	If @error Then Return False
+	; "+" / "-" = Richtung, "a:" = Anfang, "t:" = Teil des Typs (in beliebiger Reihenfolge)
+	Local $typ = StringLower(StringStripWS($ein, 8)), $richtung = 0, $fest = False, $art = ""
+	For $durchlauf = 1 To 2
+		If StringLeft($typ, 1) = "+" Or StringLeft($typ, 1) = "-" Then
+			$richtung = (StringLeft($typ, 1) = "+") ? 1 : -1
+			$fest = True
+			$typ = StringTrimLeft($typ, 1)
+		EndIf
+		If StringRegExp($typ, "^[at]:") Then
+			$art = StringLeft($typ, 1)
+			$typ = StringTrimLeft($typ, 2)
+		EndIf
+	Next
+	If $typ = "" Then Return False
+	$gTypArt = $art
+	$gTypUngenau = False
+	$gTypPatNr = 0
+	Local $merk = (($art = "") ? "" : $art & ":") & $typ
+	; derselbe Typ wie eben, da ging es (automatisch) nach unten, und die Markierung steht noch auf dem damals
+	; gefundenen Eintrag: weiter nach unten, sonst wieder nach oben
+	If $richtung = 0 Then
+		$richtung = -1
+		If $merk = $gKarteiTyp And $gTypRichtung = 1 And TimerDiff($gTypZeit) < 600000 Then
+			Local $markiert, $ym = KarteiMarkiertY($hGrid, $markiert)
+			If $markiert And Abs($ym - $gTypLetztY) < 6 Then $richtung = 1
+		EndIf
+	EndIf
+	$gKarteiTyp = $merk
+	$gTypRichtung = $richtung
+	$gTypZeit = TimerInit()
+	WinActivate($hWnd)
+	WinWaitActive($hWnd, "", 2)
+	ControlFocus($hWnd, "", $hGrid)
+	HinweisStehend("Typ " & $typ & " wird gesucht ...")
+	Local $fehler = OcrBereit()
+	If $fehler <> "" Then
+		ToolTip("")
+		Return Meldung("Texterkennung nicht gestartet: " & $fehler)
+	EndIf
+	$gSucheAbbruch = False
+	$gSucheLaeuft = True
+	Local $erg = KarteiTypSuchen($hWnd, $hGrid, $typ, $richtung, $fest)
+	$gSucheLaeuft = False
+	OcrSpaeterBeenden()
+	ToolTip("")
+	If $erg <> "" Then
+		; nichts angeklickt: die Ansicht wieder zur Markierung (Pfeil hin und zurueck; zuerst weg vom Rand, an dem
+		; die Suche begann: unten -> erst hoch, oben -> erst runter)
+		Local $vk1 = ($richtung < 0) ? 0x26 : 0x28, $vk2 = ($richtung < 0) ? 0x28 : 0x26
+		_WinAPI_PostMessage($hGrid, 0x100, $vk1, 0)
+		_WinAPI_PostMessage($hGrid, 0x101, $vk1, 0xC0000001)
+		_WinAPI_PostMessage($hGrid, 0x100, $vk2, 0)
+		_WinAPI_PostMessage($hGrid, 0x101, $vk2, 0xC0000001)
+		Return Meldung($erg)
+	EndIf
+	Return True
+EndFunc
+
+Func KarteiTypSuchen($hWnd, $hGrid, $typ, $richtung, $fest)
+	Local $g = WinGetPos($hGrid)
+	If @error Then Return "Karteikarte nicht sichtbar"
+	Local $oben = $g[1] + $KbKopfHoehe, $unten = $g[1] + $g[3]
+	Local $markiert, $ys = KarteiMarkiertY($hGrid, $markiert)
+	If Not $markiert Then $ys = ($richtung < 0) ? $unten : $oben - 20
+	Local $ys0 = $ys
+	Local $vorher = 0, $liste = 0, $db = -1, $max = Int(Einst("Karteikarte", "TypSeiten", "300"))
+	For $runde = 1 To $max
+		Local $z = 0
+		Local $summe = KarteiZeilen($hGrid, $z)
+		If @error Then Return $z
+		Local $n = UBound($z)
+		If $gAufrufProtokoll Then Protokoll("Strg+Umsch+F Runde " & $runde & " " & (($richtung < 0) ? "aufw" : "abw") & _
+				ChrW(228) & "rts ab y=" & $ys & ": " & KarteiZeilenText($z))
+		; im Bild: der naechste ueber bzw. unter der Markierung
+		Local $im = KarteiTypImBild($z, $ys, $richtung, $typ, $db = 0)
+		If $im >= 0 Then Return KarteiTypKlicken($hWnd, $hGrid, $z[$im][3], $typ, KarteiZeilenTag($z, $im), $z[$im][1])
+		; Datenbank, einmal
+		If $db = -1 Then
+			HinweisStehend("Typ " & $typ & ": Datenbank wird gefragt ...")
+			$liste = TypEintraege($hWnd, $typ)
+			$db = @error ? 0 : 1
+			If $db = 0 And $gAufrufProtokoll Then Protokoll("Strg+Umsch+F ohne Datenbank: " & $liste)
+			; ohne Datenbank genuegt ein gelesener Anfang: diese Seite noch einmal so ansehen
+			If $db = 0 Then
+				$im = KarteiTypImBild($z, $ys, $richtung, $typ, True)
+				If $im >= 0 Then Return KarteiTypKlicken($hWnd, $hGrid, $z[$im][3], $typ, KarteiZeilenTag($z, $im), $z[$im][1])
+			EndIf
+			If $db = 1 Then
+				If UBound($liste) = 0 Then Return "Keine Eintr" & ChrW(228) & "ge vom Typ " & $typ & " bei diesem Patienten (laut Datenbank)"
+				If $gAufrufProtokoll Then
+					Local $lt = ""
+					For $i = 0 To UBound($liste) - 1
+						$lt &= $liste[$i][0] & " " & $liste[$i][1] & (($liste[$i][2] = "") ? "" : " (angeordnet " & $liste[$i][2] & " " & $liste[$i][3] & ")") & "; "
+					Next
+					Protokoll("Strg+Umsch+F: " & UBound($liste) & " Eintr" & ChrW(228) & "ge vom Typ " & $typ & ": " & $lt)
+				EndIf
+			EndIf
+		EndIf
+		If $db = 1 Then
+			Local $j = -1
+			If $richtung < 0 Then
+				; Tag der markierten Stelle: letztes Datum im Bild auf deren Hoehe oder darueber; Eintraege dieses
+				; Tages oberhalb der Markierung stehen im Bild und waren nicht dabei: der letzte davor
+				Local $ds = "", $dsY = 0
+				For $i = 0 To $n - 1
+					If $z[$i][0] <> "" And $z[$i][3] <= $ys + 14 Then
+						$ds = $z[$i][0]
+						$dsY = $z[$i][3]
+					EndIf
+				Next
+				; steht dieses Datum in der obersten Zeile, beginnt der Tag evtl. weiter oben (Medical Office wiederholt
+				; das Datum dort): dann zaehlen auch dessen Eintraege bis zur Uhrzeit der obersten Zeile
+				Local $tTop = ($dsY < $oben + 25) ? $z[0][1] : ""
+				If $ds <> "" Then
+					; angezeigt wird das Eintragsdatum (FDatum; das Anordnungsdatum kann davor liegen, z.B. b8 eingetragen am
+					; 27.7., angeordnet am 14.7.; es dient nur als Ausweichdatum); davon das spaeteste vor dem Tag
+					Local $bestD = "", $a = 0
+					For $i = 0 To UBound($liste) - 1
+						Local $k = 0, $dk = $liste[$i][0], $tk = $liste[$i][1]
+						If ($dk < $ds Or ($tTop <> "" And $dk = $ds And $tk <= $tTop)) And $dk & $tk >= $bestD Then
+							$bestD = $dk & $tk
+							$j = $i
+							$a = $k
+						EndIf
+					Next
+					If $j >= 0 Then Return KarteiTypAnspringen($hWnd, $hGrid, $typ, $liste[$j][$a], $liste[$j][$a + 1], $liste[$j][2 - $a], $liste[$j][3 - $a], $liste, "letzter")
+					If $fest Then Return "Kein " & ChrW(228) & "lterer Eintrag vom Typ " & $typ & " (laut Datenbank)"
+					; keiner aelter: ab derselben Stelle nach unten
+					$richtung = 1
+					$gTypRichtung = 1
+					If Not $markiert Then $ys = $oben - 20
+					ContinueLoop
+				EndIf
+			Else
+				; alles bis zur letzten Zeile im Bild ist geprueft: der erste Eintrag nach deren Tag und Uhrzeit
+				Local $dl = "", $tl = ""
+				For $i = 0 To $n - 1
+					If $z[$i][0] <> "" Then $dl = $z[$i][0]
+					If $z[$i][1] <> "" Then $tl = $z[$i][1]
+				Next
+				; ohne gelesene Uhrzeit: erst ab dem naechsten Tag (Eintraege desselben Tages weiter unten fehlen dann)
+				If $tl = "" Then $tl = "99:99"
+				If $dl <> "" Then
+					; angezeigtes Datum (Eintragsdatum) und Uhrzeit nach der letzten Zeile im Bild; davon das frueheste
+					Local $best = "", $b = 0
+					For $i = 0 To UBound($liste) - 1
+						Local $k = 0, $dk = $liste[$i][0], $tk = $liste[$i][1]
+						If ($dk > $dl Or ($dk = $dl And $tk > $tl)) And ($j < 0 Or $dk & $tk < $best) Then
+							$best = $dk & $tk
+							$j = $i
+							$b = $k
+						EndIf
+					Next
+					If $j >= 0 Then Return KarteiTypAnspringen($hWnd, $hGrid, $typ, $liste[$j][$b], $liste[$j][$b + 1], $liste[$j][2 - $b], $liste[$j][3 - $b], $liste, "erster")
+					Return "Kein neuerer Eintrag vom Typ " & $typ & " (laut Datenbank)"
+				EndIf
+			EndIf
+		EndIf
+		; gleich beim ersten Hochblaettern oben angekommen (Datum der obersten Zeile nicht gelesen): wie "kein aelterer",
+		; also nach unten
+		If $runde = 2 And $summe = $vorher And $richtung < 0 And Not $fest Then
+			$richtung = 1
+			$gTypRichtung = 1
+			$ys = $markiert ? $ys0 : $oben - 20
+			ContinueLoop
+		EndIf
+		If $runde > 1 And $summe = $vorher Then Return "Kein " & (($richtung < 0) ? ChrW(228) & "lterer" : "neuerer") & _
+				" Eintrag vom Typ " & $typ & (($richtung < 0) ? " (Anfang" : " (Ende") & " der Karteikarte)"
+		$vorher = $summe
+		If $gSucheAbbruch Then Return "Suche abgebrochen"
+		HinweisStehend("Typ " & $typ & ": Seite " & $runde & " (Esc bricht ab)")
+		KarteiBlaettern($hGrid, $richtung, 1)
+		$ys = ($richtung < 0) ? $unten : $oben - 20
+	Next
+	Return "Typ " & $typ & " auf " & $max & " Seiten nicht gefunden"
+EndFunc
+
+; im Bild der naechste Eintrag des Typs ueber ($richtung < 0) bzw. unter der Stelle $ys; $weich: auch ein gelesener
+; Anfang von mindestens 5 Zeichen (TypAnfang; nur ohne Datenbank, die sonst bestaetigt); Rueckgabe Index oder -1
+Func KarteiTypImBild($z, $ys, $richtung, $typ, $weich)
+	Local $n = UBound($z)
+	For $k = 0 To $n - 1
+		Local $i = ($richtung < 0) ? $n - 1 - $k : $k
+		If $richtung < 0 And $z[$i][3] >= $ys Then ContinueLoop
+		If $richtung > 0 And $z[$i][3] <= $ys + 14 Then ContinueLoop
+		If TypPasst($z[$i][2], $typ) Or ($weich And TypAnfang($z[$i][2], $typ)) Then Return $i
+	Next
+	Return -1
+EndFunc
+
+; Tag der Zeile $i: ihr eigenes Datum oder das letzte darueber im Bild, sonst ""
+Func KarteiZeilenTag($z, $i)
+	For $k = $i To 0 Step -1
+		If $z[$k][0] <> "" Then Return $z[$k][0]
+	Next
+	Return ""
+EndFunc
+
+; gelesene Zeilen fuers Protokoll: "y Datum Zeit Typ | ..."
+Func KarteiZeilenText($z)
+	Local $t = ""
+	For $i = 0 To UBound($z) - 1
+		$t &= $z[$i][3] & " " & $z[$i][0] & " " & $z[$i][1] & " " & $z[$i][2] & " | "
+	Next
+	Return $t
+EndFunc
+
+; zum Eintrag springen, den die Datenbank mit Tag $d um $t (HH:MM) kennt; zeigt die Karteikarte diesen Tag nicht
+; oder dort keinen passenden Eintrag, mit dem anderen Datum ($d2, $t2: Anordnungs- bzw. Eintragsdatum) versuchen
+Func KarteiTypAnspringen($hWnd, $hGrid, $typ, $d, $t, $d2, $t2, $liste, $wahl)
+	Local $versuche[2][2] = [[$d, $t], [$d2, $t2]], $erg = ""
+	For $v = 0 To 1
+		If $versuche[$v][0] = "" Then ContinueLoop
+		; angezeigtes Datum des naechstfrueheren Eintrags dieses Typs (s. KarteiTypTag)
+		Local $dVor = ""
+		For $i = 0 To UBound($liste) - 1
+			Local $k = 0
+			If $liste[$i][$k] < $versuche[$v][0] And $liste[$i][$k] > $dVor Then $dVor = $liste[$i][$k]
+		Next
+		$erg = KarteiTypTag($hWnd, $hGrid, $typ, $versuche[$v][0], $versuche[$v][1], $dVor, $wahl)
+		If $erg = "" Then Return ""
+		If $gAufrufProtokoll Then Protokoll("Strg+Umsch+F: " & $erg)
+	Next
+	Return $erg
+EndFunc
+
+; zum Tag $d blaettern (Datumssuche ohne Klick) und dort die Zeile des Typs um $t suchen und anklicken; $wahl:
+; "erster" (Suche nach unten) bzw. "letzter" (nach oben) solcher Eintrag des Tages (Sammelimporte haben viele
+; gleiche, z.B. zehn pdf um 22:37); $dVor: angezeigtes Datum des naechstfrueheren Eintrags dieses Typs laut
+; Datenbank (Absicherung, s.u.). Jede Zeile gehoert zum letzten Datum darueber im Bild (Medical Office zeigt das
+; Datum nicht nur in der ersten Zeile eines Tages, sondern auch in der obersten sichtbaren und mitunter
+; mittendrin). Ablauf: zuerst zum Ende des Tages blaettern, an dem der gesuchte liegt (Anfang bzw. Ende), dann von
+; dort aus durch den Tag; der erste Treffer mit Typ und Uhrzeit gilt. Gibt es keinen: der Typ mit der
+; naechstliegenden Uhrzeit, dann ein Eintrag mit Typ und Uhrzeit an einem Tag zwischen $dVor und $d (laut Datenbank
+; gibt es dort keinen, also fehlte nur das Datum seiner ersten Zeile, z.B. Magenta-Zeile), zuletzt nur die
+; Uhrzeit, wenn sie eindeutig ist. Rueckgabe "" (angeklickt) oder Grund
+Func KarteiTypTag($hWnd, $hGrid, $typ, $d, $t, $dVor = "", $wahl = "erster")
+	$gNurSuchen = True
+	Local $e = KarteiDatumSuchen($hWnd, $hGrid, $d, DatumText($d))
+	$gNurSuchen = False
+	If $e <> "" Then Return $e
+	If $gTrefferDatum <> $d Then
+		; das Datum des Tages wurde nicht gelesen (z.B. nur in einer Magenta-Zeile), die Datumssuche steht aber an
+		; seiner Stelle (vor dem naechsten erkannten Tag): Typ und Uhrzeit an einem Tag zwischen dem vorigen Eintrag
+		; dieses Typs ($dVor) und $d bzw. ueber dem ersten Datum gibt es laut Datenbank sonst nicht
+		Local $z0 = 0
+		KarteiZeilen($hGrid, $z0)
+		If @error Then Return $z0
+		If $gAufrufProtokoll Then Protokoll("Strg+Umsch+F am " & DatumText($d) & " " & $t & " (Tag nicht gelesen): " & KarteiZeilenText($z0))
+		; Zeilen ueber dem ersten Datum zaehlen nur, wenn dieses nach $dVor liegt
+		Local $erstes0 = ""
+		For $i = 0 To UBound($z0) - 1
+			If $z0[$i][0] <> "" Then
+				$erstes0 = $z0[$i][0]
+				ExitLoop
+			EndIf
+		Next
+		Local $tag0 = ($erstes0 <> "" And $erstes0 <= $dVor) ? $erstes0 : "", $wahlI = -1
+		For $i = 0 To UBound($z0) - 1
+			If $z0[$i][0] <> "" Then $tag0 = $z0[$i][0]
+			If $tag0 <> "" And ($tag0 <= $dVor Or $tag0 >= $d) Then ContinueLoop
+			If Not (TypPasst($z0[$i][2], $typ) Or TypAnfang($z0[$i][2], $typ)) Or $z0[$i][1] <> $t Then ContinueLoop
+			$wahlI = $i
+			If $wahl = "erster" Then ExitLoop
+		Next
+		If $wahlI >= 0 Then Return KarteiTypKlicken($hWnd, $hGrid, $z0[$wahlI][3], $typ, $d, $t)
+		Return "Laut Datenbank Typ " & $typ & " am " & DatumText($d) & ", der Tag steht aber nicht in der Karteikarte"
+	EndIf
+	Local $ende = ($wahl = "erster") ? -1 : 1, $modus = "", $erbe = False, $vorher = 0
+	Local $z = 0, $oben = False, $unten = False, $gehoert = 0
+	; 1. zum Ende des Tages, an dem der gesuchte liegt
+	For $s = 1 To 15
+		Local $summe = KarteiTagSeite($hGrid, $d, $t, $modus, $erbe, $z, $gehoert, $oben, $unten)
+		If @error Then Return $z
+		Local $amRand = ($s > 1 And $summe = $vorher)
+		$vorher = $summe
+		If $amRand Or ($ende < 0 And Not $oben) Or ($ende > 0 And Not $unten) Then ExitLoop
+		$modus = ($ende < 0) ? "hoch" : "runter"
+		$erbe = $unten
+		KarteiBlaettern($hGrid, $ende, 1)
+	Next
+	; 2. von dort aus durch den Tag
+	Local $weg = -$ende
+	For $s = 1 To 20
+		If $s > 1 Then
+			Local $summe2 = KarteiTagSeite($hGrid, $d, $t, $modus, $erbe, $z, $gehoert, $oben, $unten)
+			If @error Then Return $z
+			If $summe2 = $vorher Then ExitLoop
+			$vorher = $summe2
+		EndIf
+		Local $n = UBound($z)
+		For $k = 0 To $n - 1
+			Local $i = ($weg > 0) ? $k : $n - 1 - $k
+			If $gehoert[$i] And (TypPasst($z[$i][2], $typ) Or TypAnfang($z[$i][2], $typ)) And $z[$i][1] = $t Then Return KarteiTypKlicken($hWnd, $hGrid, $z[$i][3], $typ, $d, $t)
+		Next
+		If ($weg > 0 And Not $unten) Or ($weg < 0 And Not $oben) Then ExitLoop
+		$modus = ($weg < 0) ? "hoch" : "runter"
+		$erbe = $unten
+		KarteiBlaettern($hGrid, $weg, 1)
+	Next
+	; kein Treffer mit Typ und Uhrzeit: Ausweichregeln auf der zuletzt gelesenen Seite
+	Local $n = UBound($z), $minT = TypMinuten($t), $besterTyp = -1, $abstand = 99999, $nurZeit = -1, $zeitZahl = 0, $ersatz = -1, $tag = ""
+	For $i = 0 To $n - 1
+		If $z[$i][0] <> "" Then $tag = $z[$i][0]
+		If $gehoert[$i] Then
+			If TypPasst($z[$i][2], $typ) Then
+				Local $ab = Abs(TypMinuten($z[$i][1]) - $minT)
+				If $ab < $abstand Then
+					$abstand = $ab
+					$besterTyp = $i
+				EndIf
+			ElseIf $z[$i][1] = $t Then
+				If $nurZeit < 0 Then $nurZeit = $i
+				$zeitZahl += 1
+			EndIf
+		EndIf
+		If $tag <> "" And $tag > $dVor And $tag < $d And TypPasst($z[$i][2], $typ) And $z[$i][1] = $t Then $ersatz = $i
+	Next
+	If $besterTyp >= 0 Then Return KarteiTypKlicken($hWnd, $hGrid, $z[$besterTyp][3], $typ, $d, $z[$besterTyp][1])
+	If $ersatz >= 0 Then Return KarteiTypKlicken($hWnd, $hGrid, $z[$ersatz][3], $typ, $d, $t)
+	If $nurZeit >= 0 And $zeitZahl = 1 Then Return KarteiTypKlicken($hWnd, $hGrid, $z[$nurZeit][3], $typ, $d, $t)
+	Return "Typ " & $typ & " am " & DatumText($d) & " um " & $t & " (laut Datenbank) nicht im Bild gefunden"
+EndFunc
+
+; liest die sichtbare Seite ($z wie KarteiZeilen) und bestimmt je Zeile, ob sie zum Tag $d gehoert ($gehoert[]),
+; sowie ob die oberste bzw. unterste dazugehoert. Zeilen ueber dem ersten Datum der Seite: nach dem Abwaertsblaettern
+; ($modus "runter") wie die letzte Zeile der vorigen Seite ($erbe), sonst dazugehoerig, wenn das erste Datum nicht
+; frueher als $d ist (das Datum steht auch mitten im Tag). Rueckgabe die Pruefsumme, bei Fehler @error, $z = Grund
+Func KarteiTagSeite($hGrid, $d, $t, $modus, $erbe, ByRef $z, ByRef $gehoert, ByRef $oben, ByRef $unten)
+	If $gSucheAbbruch Then
+		$z = "Suche abgebrochen"
+		Return SetError(1, 0, 0)
+	EndIf
+	Local $summe = KarteiZeilen($hGrid, $z)
+	If @error Then Return SetError(1, 0, 0)
+	If $gAufrufProtokoll Then Protokoll("Strg+Umsch+F am " & DatumText($d) & " " & $t & " (" & $modus & "): " & KarteiZeilenText($z))
+	Local $n = UBound($z), $erstesDatum = ""
+	For $i = 0 To $n - 1
+		If $z[$i][0] <> "" Then
+			$erstesDatum = $z[$i][0]
+			ExitLoop
+		EndIf
+	Next
+	Local $start = ($erstesDatum = "") Or ($erstesDatum >= $d)
+	If $modus = "runter" Then $start = $erbe
+	Local $groesse = $n
+	If $groesse < 1 Then $groesse = 1
+	Local $g[$groesse], $tag = ""
+	$oben = False
+	$unten = False
+	For $i = 0 To $n - 1
+		If $z[$i][0] <> "" Then $tag = $z[$i][0]
+		$g[$i] = ($tag = $d) Or ($tag = "" And $start)
+		If $g[$i] And $i = 0 Then $oben = True
+		If $g[$i] And $i = $n - 1 Then $unten = True
+	Next
+	$gehoert = $g
+	Return $summe
+EndFunc
+
+; "HH:MM" -> Minuten, sonst ein grosser Wert
+Func TypMinuten($t)
+	Local $m = StringRegExp($t, "^(\d\d):(\d\d)$", 1)
+	If @error Then Return 99999
+	Return Int($m[0]) * 60 + Int($m[1])
+EndFunc
+
+Func KarteiTypKlicken($hWnd, $hGrid, $y, $typ, $d, $t)
+	Local $g = WinGetPos($hGrid)
+	If @error Then Return "Karteikarte nicht sichtbar"
+	If Not KarteiKlick($hWnd, $g[0] + 20, $y) Then Return $gMeldung
+	; fuer "weiter in derselben Richtung": wo die Markierung jetzt steht
+	Sleep(150)
+	Local $markiert
+	$gTypLetztY = KarteiMarkiertY($hGrid, $markiert)
+	If Not $markiert Then $gTypLetztY = -999
+	Hinweis($typ & (($d = "") ? "" : " am " & DatumText($d)) & (($t = "") ? "" : " " & $t))
+	Return ""
+EndFunc
+
+; Klick in die Karteikarte mit der echten Maus (der Zeiger springt danach zurueck): ein bloss geschickter Klick
+; (ControlClick) laesst Medical Office ein Ziehen des Eintrags beginnen, das erst der naechste echte Klick beendet
+; (Halteverbots-Zeiger, Bild auf/ab wirkungslos)
+Func KarteiKlick($hWnd, $x, $y)
+	WinActivate($hWnd)
+	WinWaitActive($hWnd, "", 2)
+	Local $pt = DllStructCreate("int X;int Y")
+	$pt.X = $x
+	$pt.Y = $y
+	Local $hZiel = _WinAPI_WindowFromPoint($pt)
+	; 2 = GA_ROOT: an der Stelle muss Medical Office liegen
+	If $hZiel = 0 Or _WinAPI_GetAncestor($hZiel, 2) <> $hWnd Then Return Meldung("Karteikarte verdeckt")
+	Local $alt = MouseGetPos()
+	Opt("MouseCoordMode", 1)
+	MouseClick("left", $x, $y, 1, 0)
+	MouseMove($alt[0], $alt[1], 0)
+	Return True
+EndFunc
+
+; Hoehe (Bildschirm) des oberen Randes der markierten Zeile; ohne Markierung $ok = False und der untere Rand
+Func KarteiMarkiertY($hGrid, ByRef $ok)
+	$ok = False
+	Local $g = WinGetPos($hGrid)
+	If @error Then Return 0
+	Opt("PixelCoordMode", 1)
+	Local $m = PixelSearch($g[0] + 4, $g[1] + $KbKopfHoehe, $g[0] + 4, $g[1] + $g[3] - 3, $KbMarkiertFarbe, 6)
+	If @error Then Return $g[1] + $g[3]
+	$ok = True
+	Return $m[1]
+EndFunc
+
+; Abfragefenster wie InputBox, aber immer im Vordergrund (InputBox landete manchmal hinter Medical Office);
+; Rueckgabe der Text, bei Abbruch @error
+Func Rueckfrage($text, $vorgabe)
+	; Hoehe nach der Zahl der Zeilen (je 16 Pixel, sehr lange Zeilen bei 600 Pixel Breite zweimal)
+	Local $zeilen = 0
+	For $zl In StringSplit(StringReplace($text, @CRLF, @LF), @LF, 2)
+		$zeilen += 1 + Int(StringLen($zl) / 115)
+	Next
+	Local $lh = $zeilen * 16 + 2, $b = 600
+	Local $g = GUICreate("MOReiter", $b, $lh + 100, -1, -1, BitOR($WS_CAPTION, $WS_SYSMENU), $WS_EX_TOPMOST)
+	GUICtrlCreateLabel($text, 12, 10, $b - 24, $lh)
+	Local $ed = GUICtrlCreateInput($vorgabe, 12, $lh + 18, $b - 24, 22)
+	Local $ok = GUICtrlCreateButton("OK", $b - 196, $lh + 56, 80, 28, $BS_DEFPUSHBUTTON)
+	Local $ab = GUICtrlCreateButton("Abbrechen", $b - 104, $lh + 56, 80, 28)
+	GUISetState(@SW_SHOW, $g)
+	WinActivate($g)
+	GUICtrlSetState($ed, $GUI_FOCUS)
+	Local $erg = "", $fehler = 1, $t = TimerInit()
+	While 1
+		Local $msg = GUIGetMsg(1)
+		If $msg[1] = $g Then
+			If $msg[0] = $GUI_EVENT_CLOSE Or $msg[0] = $ab Then ExitLoop
+			If $msg[0] = $ok Then
+				$erg = GUICtrlRead($ed)
+				$fehler = 0
+				ExitLoop
+			EndIf
+		EndIf
+		; Windows gibt den Vordergrund nicht immer gleich her: in der ersten Sekunden nachhelfen
+		If TimerDiff($t) < 3000 And Not WinActive($g) Then WinActivate($g)
+	WEnd
+	GUIDelete($g)
+	Return SetError($fehler, 0, $erg)
+EndFunc
+
+; Texterkennung bereitstellen: laeuft sie noch (vom letzten Strg+Umsch+F/G), weiterverwenden, sonst starten
+Func OcrBereit()
+	AdlibUnRegister("OcrBeendenAdlib")
+	If $gOcrPid And ProcessExists($gOcrPid) Then Return ""
+	Return OcrStarten()
+EndFunc
+
+; Texterkennung noch zehn Minuten laufen lassen (der naechste Druck spart den Start), dann beenden
+Func OcrSpaeterBeenden()
+	AdlibRegister("OcrBeendenAdlib", 600000)
+EndFunc
+
+Func OcrBeendenAdlib()
+	AdlibUnRegister("OcrBeendenAdlib")
+	OcrBeenden()
+EndFunc
+
+; Spalten Datum, Zeit und Typ der sichtbaren Liste lesen: $z[n][4] = JJJJMMTT oder "", HH:MM oder "", Typ (klein)
+; oder "", Bildschirm-y der ersten Textzeile (von oben nach unten); Rueckgabe Pruefsumme (Anfang/Ende erkennen),
+; bei Fehler @error und $z = Text
+Func KarteiZeilen($hGrid, ByRef $z)
+	Local $g = WinGetPos($hGrid)
+	If @error Then
+		$z = "Karteikarte nicht sichtbar"
+		Return SetError(1, 0, 0)
+	EndIf
+	Local $bd = Int(Einst("Karteikarte", "ZeitAb", "54")), $bz = Int(Einst("Karteikarte", "TypAb", "98"))
+	Local $bt = Int(Einst("Karteikarte", "TypBis", "144"))
+	Local $x1 = $g[0] + 1, $y1 = $g[1] + $KbKopfHoehe, $x2 = $g[0] + $bt, $y2 = $g[1] + $g[3] - 2
+	Local $summe = PixelChecksum($x1, $y1, $x2, $y2)
+	Local $bild = @AppDataDir & "\MOReiter\Karteispalten.png"
+	DirCreate(@AppDataDir & "\MOReiter")
+	_ScreenCapture_Capture($bild, $x1, $y1, $x2, $y2, False)
+	; Spalten getrennt (sonst las die Texterkennung z.B. "22:37 169" als "z37169" und verlor ganze Typen)
+	Local $woerter = OcrLesen($bild, "|" & ($bd - 1) & "|" & ($bz - 1))
+	If @error Then
+		$z = "Texterkennung: " & $woerter
+		Return SetError(1, 0, 0)
+	EndIf
+	Local $erg[0][4], $jj = Int(StringRight(@YEAR, 2))
+	For $w In StringSplit(StringStripCR($woerter), @LF, 2)
+		Local $f = StringSplit($w, ";", 2)
+		If UBound($f) < 4 Then ContinueLoop
+		Local $x = Int($f[0]) + 1, $y = $y1 + Int($f[1]) + Int(Int($f[2]) / 2), $txt = StringStripWS($f[3], 8)
+		If $txt = "" Then ContinueLoop
+		; Zeile suchen bzw. anlegen (Woerter einer Tabellenzeile liegen auf gleicher Hoehe)
+		Local $r = -1
+		For $i = 0 To UBound($erg) - 1
+			If Abs($erg[$i][3] - $y) <= 6 Then
+				$r = $i
+				ExitLoop
+			EndIf
+		Next
+		If $r < 0 Then
+			$r = UBound($erg)
+			ReDim $erg[$r + 1][4]
+			$erg[$r][3] = $y
+		EndIf
+		If $x < $bd Then
+			Local $m = StringRegExp($txt, "^\D?(\d{1,2})[.,](\d{1,2})[.,](\d{4}|\d{2})", 1)
+			If @error Then ContinueLoop
+			Local $t = Int($m[0]), $mo = Int($m[1]), $j = Int($m[2])
+			If $t < 1 Or $t > 31 Or $mo < 1 Or $mo > 12 Then ContinueLoop
+			If $j < 100 Then $j += ($j <= $jj + 1) ? 2000 : 1900
+			$erg[$r][0] = StringFormat("%04d%02d%02d", $j, $mo, $t)
+		ElseIf $x < $bz Then
+			; "22:37", "9:05", auch ohne Doppelpunkt "2237" (aber nicht "237")
+			Local $u = StringRegExp($txt, "^\D?(\d{1,2})[:.;,](\d{2})$", 1)
+			If @error Then $u = StringRegExp($txt, "^\D?(\d{2})(\d{2})$", 1)
+			If Not @error Then $erg[$r][1] = StringFormat("%02d:%02d", Int($u[0]), Int($u[1]))
+		Else
+			; Reste von Spaltenlinien ("|") u.ae. weg
+			$erg[$r][2] &= StringRegExpReplace(StringLower($txt), "[^\w]", "")
+		EndIf
+	Next
+	; nach y sortieren
+	For $i = 1 To UBound($erg) - 1
+		Local $a0 = $erg[$i][0], $a1 = $erg[$i][1], $a2 = $erg[$i][2], $a3 = $erg[$i][3], $k = $i - 1
+		While $k >= 0
+			If $erg[$k][3] <= $a3 Then ExitLoop
+			For $c = 0 To 3
+				$erg[$k + 1][$c] = $erg[$k][$c]
+			Next
+			$k -= 1
+		WEnd
+		$erg[$k + 1][0] = $a0
+		$erg[$k + 1][1] = $a1
+		$erg[$k + 1][2] = $a2
+		$erg[$k + 1][3] = $a3
+	Next
+	; umbrochene Typen ("EDMPD" / "M2", "UEBLA" / "BOR"): Zeile nur mit Typ, kurz unter einer Zeile mit Typ, gehoert
+	; zu dieser
+	Local $m2[UBound($erg) + 1][4], $nm = 0
+	For $i = 0 To UBound($erg) - 1
+		If $nm > 0 Then
+			If $erg[$i][0] = "" And $erg[$i][1] = "" And $erg[$i][2] <> "" And $m2[$nm - 1][2] <> "" _
+					And $erg[$i][3] - $m2[$nm - 1][3] <= 16 Then
+				$m2[$nm - 1][2] &= $erg[$i][2]
+				ContinueLoop
+			EndIf
+		EndIf
+		For $c = 0 To 3
+			$m2[$nm][$c] = $erg[$i][$c]
+		Next
+		$nm += 1
+	Next
+	If $nm = 0 Then $nm = 1
+	ReDim $m2[$nm][4]
+	If UBound($erg) = 0 Then
+		$z = $erg
+		Return $summe
+	EndIf
+	$erg = $m2
+	; Typ-Spalte noch einmal: die Zellen der erkannten Zeilen nebeneinander in eine Zeile gelegt (untereinander las die
+	; Texterkennung kurze Typen wie "au", "tf" nur etwa zur Haelfte)
+	Local $ysT = "", $idx[0]
+	For $i = 0 To UBound($erg) - 1
+		If $erg[$i][0] = "" And $erg[$i][1] = "" Then ContinueLoop
+		ReDim $idx[UBound($idx) + 1]
+		$idx[UBound($idx) - 1] = $i
+		$ysT &= (($ysT = "") ? "" : ",") & ($erg[$i][3] - $y1)
+	Next
+	If UBound($idx) > 0 And UBound($idx) <= 45 Then
+		Local $zw = OcrZellen($bild, $bz - 1, $bt - 1, $ysT)
+		If Not @error Then
+			Local $neu[UBound($idx)]
+			For $w In StringSplit(StringStripCR($zw), @LF, 2)
+				Local $f2 = StringSplit($w, ";", 2)
+				If UBound($f2) < 3 Then ContinueLoop
+				If $f2[0] <> "Z" Then ContinueLoop
+				Local $zi = Int($f2[1])
+				If $zi >= 0 And $zi < UBound($idx) Then $neu[$zi] &= StringRegExpReplace(StringLower($f2[2]), "[^\w]", "")
+			Next
+			For $k = 0 To UBound($idx) - 1
+				If $neu[$k] = "" Then ContinueLoop
+				; umbrochener Typ schon vollstaendig ("edmpdm2", die Zelle zeigt nur die erste Zeile "edmpd"): behalten
+				Local $bisher = $erg[$idx[$k]][2]
+				If $bisher <> "" And StringLeft($bisher, StringLen($neu[$k])) = $neu[$k] Then ContinueLoop
+				$erg[$idx[$k]][2] = $neu[$k]
+			Next
+		EndIf
+	EndIf
+	$z = $erg
+	Return $summe
+EndFunc
+
+; Tag und Uhrzeit aller Eintraege des geoeffneten Patienten vom Typ $typ aus der Datenbank (ltag), aufsteigend:
+; $l[n][4] = JJJJMMTT, HH:MM (FDatum, FZeit), Anordnungsdatum und -zeit (nur wenn anders, sonst ""). Das Kuerzel steht wie bei Dateilese (doPatvonMO) in FText ("bd#bd: ...") bzw.
+; FICdcode ("rr#rr"), sonst gilt das der Eintragsart aus mosystem (TypArten). @error mit Grund, wenn die Datenbank
+; nicht erreichbar oder das Kuerzel dort ganz unbekannt ist (dann sucht Strg+Umsch+F nur am Bildschirm). Das
+; Ergebnis gilt zwei Minuten (wiederholtes Strg+Umsch+F beim selben Patienten)
+Func TypEintraege($hWnd, $typ)
+	Local $nach, $vor, $geb
+	If Not PatientDaten($hWnd, $nach, $vor, $geb) Then Return SetError(1, 0, "Patient nicht gefunden")
+	Local $schluessel = $nach & ";" & $vor & ";" & $geb & ";" & $gTypArt & ":" & $typ
+	If $schluessel = $gTypCacheSchluessel And TimerDiff($gTypCacheZeit) < 120000 Then
+		$gTypPatNr = $gTypCacheNr
+		Return $gTypCache
+	EndIf
+	Local $nr = MOPatNr($nach, $vor, $geb)
+	If @error Then Return SetError(1, 0, "Patientennummer: " & $nr)
+	$gTypPatNr = Int($nr)
+	Local $arten = TypArtenFuer($typ), $bekannt = ($arten <> ""), $dbTyp = $typ
+	$gTypUngenau = False
+	; genau gesucht, aber so in der Datenbank unbekannt: das laengste bekannte Kuerzel, mit dem die Eingabe beginnt
+	; (falls Medical Office dem Kuerzel in der Typ-Spalte noch einen Zusatz anhaengt); am Bildschirm
+	; wird weiter der volle Typ verglichen
+	If Not $bekannt And $gTypArt = "" And IsObj($gTypArten) Then
+		Local $laengstes = ""
+		For $k In $gTypArten.Keys
+			If StringLen($k) >= 4 And StringLen($k) < StringLen($typ) And StringLeft($typ, StringLen($k)) = $k _
+					And StringLen($k) > StringLen($laengstes) Then $laengstes = $k
+		Next
+		If $laengstes <> "" Then
+			$dbTyp = $laengstes
+			$arten = TypArten($dbTyp)
+			$bekannt = True
+			$gTypUngenau = True
+			If $gAufrufProtokoll Then Protokoll("Strg+Umsch+F: " & $typ & " in der Datenbank unbekannt, nehme Kuerzel " & $dbTyp)
+		EndIf
+	EndIf
+	Local $liste = ($arten = "") ? "0" : StringReplace(StringTrimLeft(StringTrimRight($arten, 1), 1), "|", ",")
+	Local $cn = DBVerbinden("medoff")
+	If @error Then Return SetError(1, 0, $cn)
+	$gComFehler = ""
+	; nur Zeilen, die das Kuerzel tragen koennen
+	Local $rs = $cn.Execute("SELECT DATE_FORMAT(DATE('1890-01-01') + INTERVAL FDatum DAY, '%Y%m%d'), FZeit, FEintragsart, " & _
+			"CAST(LEFT(COALESCE(FText, ''), 40) AS CHAR), CAST(LEFT(COALESCE(FICdcode, ''), 40) AS CHAR), " & _
+			"IF(FAnorddatum > 0, DATE_FORMAT(DATE('1890-01-01') + INTERVAL FAnorddatum DAY, '%Y%m%d'), ''), COALESCE(FAnordzeit, 0), " & _
+			"CAST(IF (FText RLIKE '^(\w+)#\1:', REGEXP_REPLACE(FText,'(\w+)#\1:.*','\1'),REGEXP_REPLACE(FICdcode,'(\w+)#\1','\1')) AS CHAR) " & _
+			"FROM ltag WHERE FPatnr=" & Int($nr) & _
+			" AND (FText LIKE '%#%' OR FICdcode LIKE '%#%' OR FICdcode RLIKE '^[A-Za-z][A-Za-z0-9]*$' OR FEintragsart IN (" & $liste & ")) ORDER BY FDatum, FZeit")
+	If $gComFehler <> "" Or Not IsObj($rs) Then
+		Local $fe = $gComFehler
+		$cn.Close
+		Return SetError(1, 0, "Abfrage fehlgeschlagen: " & $fe)
+	EndIf
+	Local $l[0][4], $artGefunden = False
+	While Not $rs.EOF
+		Local $art = "", $ft = StringStripWS(String($rs.Fields(3).Value), 3), $ic = StringStripWS(String($rs.Fields(4).Value), 3)
+		; Kuerzel wie Dateilese (MODmpreihe) auf dem Server bestimmt ("Art"); ist es nur FICdcode unveraendert (eine
+		; Diagnose wie "Z13.1 G"), ist es keins
+		; FICdcode ist entweder eine Diagnose (ICD: Buchstabe, zwei Ziffern, z.B. "Z13.1 G") oder selbst das Kuerzel
+		; (z.B. "eDMPDM2"; Dateileses Ausdruck gibt es dann unveraendert zurueck)
+		Local $icKuerzel = StringRegExp($ic, "^[A-Za-z][A-Za-z0-9]*$") And Not StringRegExp($ic, "^[A-Z]\d\d")
+		Local $sqlArt = StringStripWS(String($rs.Fields(7).Value), 3)
+		If $sqlArt <> "" And Not StringInStr($sqlArt, "#") And ($sqlArt <> $ic Or $icKuerzel) Then $art = $sqlArt
+		; sonst wie bisher hier
+		If $art = "" Then
+			Local $m = StringRegExp($ft, "^(\w+)#\1:", 1)
+			If Not @error Then
+				$art = $m[0]
+			Else
+				$m = StringRegExp($ic, "^(\w+)#\1$", 1)
+				If Not @error Then
+					$art = $m[0]
+				ElseIf $icKuerzel Then
+					$art = $ic
+				EndIf
+			EndIf
+		EndIf
+		Local $passt = False
+		If $art <> "" Then
+			$passt = ($gTypUngenau ? (StringLower($art) = $dbTyp) : TypPasst(StringLower($art), $typ))
+			If $passt Then
+				$bekannt = True
+				$artGefunden = True
+			EndIf
+		Else
+			; Kuerzel der Eintragsart; FICdcode kann dabei eine Diagnose tragen (z.B. UEBLABOR: Z13.1 G)
+			$passt = StringInStr($arten, "|" & Int($rs.Fields(2).Value) & "|") > 0
+		EndIf
+		If $passt Then
+			Local $n = UBound($l), $sek = Int($rs.Fields(1).Value), $sek2 = Int($rs.Fields(6).Value)
+			ReDim $l[$n + 1][4]
+			$l[$n][0] = String($rs.Fields(0).Value)
+			$l[$n][1] = StringFormat("%02d:%02d", Int($sek / 3600), Mod(Int($sek / 60), 60))
+			; Anordnungsdatum, falls anders (die Karteikarte zeigt bei manchen Eintraegen dieses)
+			$l[$n][2] = String($rs.Fields(5).Value)
+			$l[$n][3] = StringFormat("%02d:%02d", Int($sek2 / 3600), Mod(Int($sek2 / 60), 60))
+			If $l[$n][2] = $l[$n][0] And $l[$n][3] = $l[$n][1] Then $l[$n][2] = ""
+		EndIf
+		$rs.MoveNext
+	WEnd
+	$rs.Close
+	$cn.Close
+	If Not $bekannt Then Return SetError(1, 0, "Kuerzel " & $typ & " in der Datenbank unbekannt")
+	$gTypCache = $l
+	$gTypCacheNr = Int($nr)
+	$gTypCacheSchluessel = $schluessel
+	$gTypCacheZeit = TimerInit()
+	Return $l
+EndFunc
+
+; Eintragsarten (ltag.FEintragsart) zum Kuerzel $typ als "|n|m|", "" wenn unbekannt. Die Liste steht in mosystem:
+; FMemo (Feld .2 = Nummer, .3 internes, .5 externes Kuerzel) und Ftextkategorieliste (.6 Kuerzel, .7 Nummer),
+; zerlegt wie in Dateilese (MOKatLaden, ParseMemoFast). Das Zerlegen dauert; das Ergebnis kommt deshalb nach
+; %APPDATA%\MOReiter\Typen.ini und wird nur neu ermittelt, wenn sich die Memos geaendert haben (MD5)
+Func TypArten($typ)
+	If Not IsObj($gTypArten) Then
+		$gTypArten = ObjCreate("Scripting.Dictionary")
+		Local $cn = DBVerbinden("medoff")
+		If @error Then Return ""
+		Local $datei = @AppDataDir & "\MOReiter\Typen.ini", $kennung = ""
+		$gComFehler = ""
+		Local $rs = $cn.Execute("SELECT MD5(FMemo), MD5(Ftextkategorieliste) FROM mosystem LIMIT 1")
+		If $gComFehler = "" And IsObj($rs) Then
+			; "2:" = Fassung des Zwischenspeichers (Kuerzel ohne Leerzeichen)
+			If Not $rs.EOF Then $kennung = "2:" & String($rs.Fields(0).Value) & String($rs.Fields(1).Value)
+			$rs.Close
+		EndIf
+		If $kennung <> "" And IniRead($datei, "Typen", "Kennung", "") = $kennung Then
+			Local $a = IniReadSection($datei, "Typen")
+			If Not @error Then
+				For $i = 1 To $a[0][0]
+					If $a[$i][0] <> "Kennung" Then $gTypArten.Item(StringLower($a[$i][0])) = $a[$i][1]
+				Next
+			EndIf
+		Else
+			HinweisStehend("Typ-K" & ChrW(252) & "rzel werden aus Medical Office gelesen (nur beim ersten Mal, dauert etwas) ...")
+			$gComFehler = ""
+			$rs = $cn.Execute("SELECT HEX(FMemo), HEX(Ftextkategorieliste) FROM mosystem LIMIT 1")
+			If $gComFehler = "" And IsObj($rs) Then
+				If Not $rs.EOF Then
+					Local $e = MemoZerlegen(String($rs.Fields(0).Value)), $nr = -1
+					For $i = 0 To UBound($e) - 1
+						If $e[$i][0] = "1.2" Or $e[$i][0] = "1.3" Or $e[$i][0] = "1.5" Then ContinueLoop
+						If StringRight($e[$i][0], 2) = ".2" Then
+							$nr = AscW(StringLeft($e[$i][1], 1)) + ((StringLen($e[$i][1]) > 1) ? 256 * AscW(StringMid($e[$i][1], 2, 1)) : 0)
+						ElseIf (StringRight($e[$i][0], 2) = ".3" Or StringRight($e[$i][0], 2) = ".5") And $nr >= 0 Then
+							TypArtMerken($e[$i][1], $nr)
+						EndIf
+					Next
+					$e = MemoZerlegen(String($rs.Fields(1).Value))
+					Local $kz = ""
+					For $i = 0 To UBound($e) - 1
+						If StringRight($e[$i][0], 2) = ".2" Then
+							$kz = ""
+						ElseIf StringRight($e[$i][0], 2) = ".6" Then
+							$kz = $e[$i][1]
+						ElseIf StringRight($e[$i][0], 2) = ".7" And $kz <> "" Then
+							TypArtMerken($kz, AscW(StringLeft($e[$i][1], 1)) + ((StringLen($e[$i][1]) > 1) ? 256 * AscW(StringMid($e[$i][1], 2, 1)) : 0))
+						EndIf
+					Next
+				EndIf
+				$rs.Close
+			EndIf
+			; merken (nur Kuerzel, die als INI-Schluessel taugen)
+			If $kennung <> "" And $gTypArten.Count > 0 Then
+				Local $txt = "Kennung=" & $kennung
+				For $k In $gTypArten.Keys
+					If StringRegExp($k, "^[^=\[\];]+$") Then $txt &= @LF & $k & "=" & $gTypArten.Item($k)
+				Next
+				DirCreate(@AppDataDir & "\MOReiter")
+				IniDelete($datei, "Typen")
+				IniWriteSection($datei, "Typen", $txt)
+			EndIf
+		EndIf
+		$cn.Close
+		If $gAufrufProtokoll Then Protokoll("mosystem: " & $gTypArten.Count & " Typ-K" & ChrW(252) & "rzel")
+	EndIf
+	If $gTypArten.Exists($typ) Then Return $gTypArten.Item($typ)
+	Return ""
+EndFunc
+
+; wie TypArten, bei Teilsuche ($gTypArt "a" bzw. "t") alle Eintragsarten der passenden Kuerzel
+Func TypArtenFuer($typ)
+	Local $erg = TypArten($typ)
+	If $gTypArt = "" Or Not IsObj($gTypArten) Then Return $erg
+	$erg = "|"
+	For $k In $gTypArten.Keys
+		If Not TypPasst($k, $typ) Then ContinueLoop
+		For $nr In StringSplit(StringTrimLeft(StringTrimRight($gTypArten.Item($k), 1), 1), "|", 2)
+			If $nr <> "" And Not StringInStr($erg, "|" & $nr & "|") Then $erg &= $nr & "|"
+		Next
+	Next
+	Return ($erg = "|") ? "" : $erg
+EndFunc
+
+; bei genauer Suche: ist der gelesene Typ $s der Anfang des gesuchten, weil dieser in der schmalen Spalte umbrochen
+; ist und die Texterkennung die zweite Zeile nicht las ("edmpd" fuer "edmpdm2")? Nur, wo Tag und Uhrzeit laut
+; Datenbank schon stimmen
+Func TypAnfang($s, $typ)
+	; nicht, wenn die Datenbank nur ein kuerzeres Kuerzel kannte (dann waeren auch andere Zusaetze dabei)
+	If $gTypArt <> "" Or $gTypUngenau Or StringLen($s) < 5 Or StringLen($typ) <= StringLen($s) Then Return False
+	Return StringLeft($typ, StringLen($s)) = $s
+EndFunc
+
+; passt der gelesene bzw. gespeicherte Typ $s zum gesuchten? $gTypArt: "" genau, "a" Anfang, "t" Teil
+Func TypPasst($s, $typ)
+	If $s = "" Then Return False
+	If $gTypArt = "a" Then Return StringLeft($s, StringLen($typ)) = $typ
+	If $gTypArt = "t" Then Return StringInStr($s, $typ) > 0
+	Return $s = $typ
+EndFunc
+
+Func TypArtMerken($kz, $nr)
+	; ohne Leerzeichen wie die Eingabe und die gelesene Spalte ("EDMPD M2" steht umbrochen als EDMPD / M2 da)
+	$kz = StringLower(StringStripWS($kz, 8))
+	If $kz = "" Then Return
+	Local $alt = $gTypArten.Exists($kz) ? $gTypArten.Item($kz) : "|"
+	If Not StringInStr($alt, "|" & $nr & "|") Then $gTypArten.Item($kz) = $alt & $nr & "|"
+EndFunc
+
+; zerlegt ein Memofeld von Medical Office (binaer, verschachtelte Laengenangaben; als Hex-Text) in die Eintraege
+; $e[n][2] = Hierarchienummer (z.B. "3.2"), Text (je Byte ein Zeichen); woertliche Uebertragung von ParseMemoFast
+; aus Dateilese (vonMO.bas), einschliesslich des Entfernens uebergeordneter Eintraege
+Func MemoZerlegen($hex)
+	Local $leer[0][2]
+	Local $lBLen = Int(StringLen($hex) / 2)
+	If $lBLen < 2 Then Return $leer
+	Local $sb = DllStructCreate("byte[" & $lBLen & "]")
+	DllStructSetData($sb, 1, Binary("0x" & $hex))
+	; ab(i) (0-basiert) = DllStructGetData($sb, 1, i + 1)
+	Local $cap = 256, $nMe = 0
+	Local $mZnr[$cap], $mMx[$cap], $mEbn[$cap], $mENr[$cap], $mTxt[$cap]
+	Local $ebNr[33], $ebWert[33], $nEb = 0
+	Local $pos = 1, $ie = 0, $tlen, $gl, $MAX, $aktmax, $altie, $k, $n
+	$tlen = DllStructGetData($sb, 1, 1) + DllStructGetData($sb, 1, 2) * 256
+	If $tlen = 65535 Then $tlen = $lBLen
+	$gl = $tlen
+	$MAX = $gl
+	While 1
+		Local $obDruck = False
+		If $pos + 1 >= $lBLen Then ExitLoop
+		$tlen = DllStructGetData($sb, 1, $pos) + DllStructGetData($sb, 1, $pos + 1) * 256
+		If $pos = 1 Then
+			$gl = $tlen
+			$MAX = $gl
+		EndIf
+		$aktmax = $tlen + $pos + 1
+		Local $obnaechst = False
+		If $aktmax >= 0 And $aktmax <= $gl + 2 Then
+			If $pos > $MAX Then
+				$obnaechst = True
+			ElseIf $aktmax <= $MAX Then
+				If $aktmax < $lBLen Then
+					If DllStructGetData($sb, 1, $aktmax) = 0 Then $obnaechst = True
+				EndIf
+			EndIf
+		EndIf
+		If $obnaechst Then
+			$altie = $ie
+			If $aktmax <= $MAX Then
+				$ie += 1
+			Else
+				Local $hoechsteZnr = -1
+				$ie = 0
+				For $k = 0 To $nMe - 1
+					If $mMx[$k] >= $aktmax And $mZnr[$k] > $hoechsteZnr Then $hoechsteZnr = $mZnr[$k]
+				Next
+				For $k = 0 To $nMe - 1
+					If $mMx[$k] >= $aktmax And $mZnr[$k] = $hoechsteZnr And $mEbn[$k] > $ie Then $ie = $mEbn[$k]
+				Next
+				$ie += 1
+			EndIf
+			If $ie <= $altie Then
+				If $ie < $altie Then
+					For $n = $nEb To 1 Step -1
+						If $ebNr[$n] > $ie Then $nEb = $n - 1
+					Next
+				EndIf
+				For $n = 1 To $nEb
+					If $ebNr[$n] = $ie Then
+						$ebWert[$n] += 1
+						ExitLoop
+					EndIf
+				Next
+			Else
+				If $nEb < 32 Then
+					$nEb += 1
+					$ebNr[$nEb] = $ie
+					$ebWert[$nEb] = 1
+				EndIf
+			EndIf
+			$MAX = $aktmax
+			$obDruck = True
+		EndIf
+		If $obDruck Then
+			Local $lPS = $pos + 1
+			If $lPS + $tlen - 1 < $lBLen Then
+				Local $bNull = True
+				For $k = 0 To $tlen - 1
+					If DllStructGetData($sb, 1, $lPS + $k + 1) <> 0 Then
+						$bNull = False
+						ExitLoop
+					EndIf
+				Next
+				If $bNull Then
+					$pos += $tlen
+				Else
+					Local $ebS = ""
+					For $n = 1 To $nEb
+						If $ebS <> "" Then $ebS &= "."
+						$ebS &= $ebWert[$n]
+					Next
+					Local $txt = ""
+					For $k = 0 To $tlen - 1
+						$txt &= ChrW(DllStructGetData($sb, 1, $lPS + $k + 1))
+					Next
+					If StringRight($txt, 1) = ChrW(0) Then $txt = StringTrimRight($txt, 1)
+					If $nMe >= $cap Then
+						$cap *= 2
+						ReDim $mZnr[$cap]
+						ReDim $mMx[$cap]
+						ReDim $mEbn[$cap]
+						ReDim $mENr[$cap]
+						ReDim $mTxt[$cap]
+					EndIf
+					$mZnr[$nMe] = $pos
+					$mMx[$nMe] = $MAX
+					$mEbn[$nMe] = $ie
+					$mENr[$nMe] = $ebS
+					$mTxt[$nMe] = $txt
+					$nMe += 1
+				EndIf
+			EndIf
+		EndIf
+		$pos += 1
+		If $pos >= $gl Then ExitLoop
+	WEnd
+	If $nMe = 0 Then Return $leer
+	; uebergeordnete Eintraege entfernen (wenn der naechste mit "ENr." beginnt)
+	Local $e[$nMe][2], $nOut = 0
+	For $i = 0 To $nMe - 1
+		If $i < $nMe - 1 Then
+			If StringLeft($mENr[$i + 1], StringLen($mENr[$i]) + 1) = $mENr[$i] & "." Then ContinueLoop
+		EndIf
+		$e[$nOut][0] = $mENr[$i]
+		$e[$nOut][1] = $mTxt[$i]
+		$nOut += 1
+	Next
+	If $nOut = 0 Then Return $leer
+	ReDim $e[$nOut][2]
+	Return $e
+EndFunc
+
+; ungefaehre Zahl der Seiten zwischen den Tagen $von und $ziel (JJJJMMTT): Eintraege des Patienten ($gTypPatNr) in
+; ltag dazwischen geteilt durch die Zeilen je Seite (etwa 22 Pixel, wegen mehrzeiliger Eintraege knapp gerechnet);
+; eher zu wenig als zu viel, 1 bis 64
+Func KarteiSchaetzung($hGrid, $von, $ziel)
+	Local $g = WinGetPos($hGrid)
+	If @error Then Return 1
+	Local $a = ($von < $ziel) ? $von : $ziel, $b = ($von < $ziel) ? $ziel : $von
+	Local $cn = DBVerbinden("medoff")
+	If @error Then Return 1
+	$gComFehler = ""
+	Local $rs = $cn.Execute("SELECT COUNT(*) FROM ltag WHERE FPatnr=" & $gTypPatNr & " AND FDatum > DATEDIFF('" & _
+			StringLeft($a, 4) & "-" & StringMid($a, 5, 2) & "-" & StringRight($a, 2) & "', '1890-01-01') AND FDatum < DATEDIFF('" & _
+			StringLeft($b, 4) & "-" & StringMid($b, 5, 2) & "-" & StringRight($b, 2) & "', '1890-01-01')"), $zahl = 0
+	If $gComFehler = "" And IsObj($rs) Then
+		If Not $rs.EOF Then $zahl = Int($rs.Fields(0).Value)
+		$rs.Close
+	EndIf
+	$cn.Close
+	Local $jeSeite = Int(($g[3] - $KbKopfHoehe) / 22)
+	If $jeSeite < 5 Then $jeSeite = 5
+	Local $sch = Int($zahl / $jeSeite * 0.7)
+	If $gAufrufProtokoll Then Protokoll("Strg+Umsch+G: " & $zahl & " Eintr" & ChrW(228) & "ge zwischen " & $a & " und " & $b & ", erster Sprung " & $sch & " Seiten")
+	If $sch < 1 Then $sch = 1
+	If $sch > 64 Then $sch = 64
+	Return $sch
 EndFunc
 
 ; "3.5.24", "3.5.2024", "5.24", "5.2024", "2024" -> JJJJMMTT (Monats- bzw. Jahresanfang), sonst ""
@@ -6339,16 +7375,58 @@ EndFunc
 
 ; Texterkennung als dauernd laufender PowerShell-Prozess (der Start kostet 1-2 s, jede Seite danach nur einen
 ; Bruchteil): liest je Zeile einen Bildpfad von der Standardeingabe, vergroessert das Bild dreifach und gibt
-; je erkannter Textzeile "x;y;Hoehe;Text" (erstes Wort, Pixel im Originalbild) aus, danach "ENDE"; Rueckgabe ""
-; oder Fehlertext
+; je erkanntem Wort "x;y;Hoehe;Text" (Pixel im Originalbild) aus, danach "ENDE"; Rueckgabe "" oder Fehlertext
 Func OcrStarten()
 	OcrBeenden()
 	Local $ps = @TempDir & "\MOReiter-Texterkennung2.ps1"
-	Local $s = '$ErrorActionPreference = "Stop"' & @CRLF & _
+	; MorBild.Aufbereiten (C#, einmal je Start uebersetzt; [Karteikarte] Aufbereiten=0 schaltet es ab): Zeilen mit
+	; kraeftigem Hintergrund (Magenta: Abrechnungsziffern, oft die erste Zeile eines Tages, mit dunklem Datum auf
+	; Magenta (215,0,217); Markierungsblau) werden zu dunkler Schrift auf Weiss, sonst liest die Texterkennung sie nicht
+	Local $s = 'param([string]$mitAufb = ''0'')' & @CRLF & _
+			'$ErrorActionPreference = "Stop"' & @CRLF & _
 			'[Console]::OutputEncoding = [Text.Encoding]::UTF8' & @CRLF & _
 			'[Console]::InputEncoding = [Text.Encoding]::UTF8' & @CRLF & _
 			'Add-Type -AssemblyName System.Drawing' & @CRLF & _
 			'Add-Type -AssemblyName System.Runtime.WindowsRuntime' & @CRLF & _
+			'$aufb = ($mitAufb -eq ''1''); $dll = Join-Path $env:TEMP ''MOReiter-Bild3.dll''' & @CRLF & _
+			'if ($aufb -and (Test-Path $dll)) { try { Add-Type -Path $dll } catch { Remove-Item $dll -ErrorAction SilentlyContinue } }' & @CRLF & _
+			'if ($aufb -and -not (''MorBild'' -as [type])) { try { Add-Type -ReferencedAssemblies System.Drawing -OutputAssembly $dll -OutputType Library -TypeDefinition @"' & @CRLF & _
+			'using System; using System.Drawing; using System.Drawing.Imaging; using System.Runtime.InteropServices;' & @CRLF & _
+			'public static class MorBild {' & @CRLF & _
+			'  // nur Pixelzeilen mit kraeftigem Hintergrund (wenig Gruen: Magenta, Markierungsblau) werden umgewandelt: Farbabstand' & @CRLF & _
+			'  // vom Hintergrund (alle drei Kanaele; die Schrift ist dort dunkel), auf den groessten Abstand der Zeile gestreckt,' & @CRLF & _
+			'  // dunkel auf Weiss; Bildspalten, die in fast allen Magenta-Zeilen fast weiss sind (Spaltenlinien), werden weiss' & @CRLF & _
+			'  public static Bitmap Aufbereiten(Bitmap src) {' & @CRLF & _
+			'    int w = src.Width, h = src.Height;' & @CRLF & _
+			'    Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppArgb);' & @CRLF & _
+			'    using (Graphics g = Graphics.FromImage(b)) g.DrawImage(src, 0, 0, w, h);' & @CRLF & _
+			'    BitmapData d = b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);' & @CRLF & _
+			'    int n = d.Stride * h; byte[] p = new byte[n]; Marshal.Copy(d.Scan0, p, 0, n);' & @CRLF & _
+			'    int[] hist = new int[32768]; int[] bgR = new int[h]; int[] bgG = new int[h]; int[] bgB = new int[h]; bool[] tun = new bool[h]; bool[] mag = new bool[h];' & @CRLF & _
+			'    for (int y = 0; y < h; y++) {' & @CRLF & _
+			'      Array.Clear(hist, 0, hist.Length); int best = 0, bestZ = -1;' & @CRLF & _
+			'      for (int x = 0; x < w; x++) { int i = y * d.Stride + x * 4; int k = ((p[i + 2] >> 3) << 10) | ((p[i + 1] >> 3) << 5) | (p[i] >> 3); hist[k]++; if (hist[k] > bestZ) { bestZ = hist[k]; best = k; } }' & @CRLF & _
+			'      bgR[y] = ((best >> 10) & 31) * 8 + 4; bgB[y] = (best & 31) * 8 + 4; bgG[y] = ((best >> 5) & 31) * 8 + 4;' & @CRLF & _
+			'      tun[y] = bgG[y] < 160; mag[y] = tun[y] && bgR[y] > 150 && bgB[y] > 150;' & @CRLF & _
+			'    }' & @CRLF & _
+			'    int magZ = 0; int[] weiss = new int[w];' & @CRLF & _
+			'    for (int y = 0; y < h; y++) { if (!mag[y]) continue; magZ++; for (int x = 0; x < w; x++) { int i = y * d.Stride + x * 4; if (p[i] > 220 && p[i + 1] > 220 && p[i + 2] > 220) weiss[x]++; } }' & @CRLF & _
+			'    bool[] linie = new bool[w];' & @CRLF & _
+			'    for (int x = 0; x < w; x++) linie[x] = magZ >= 3 && weiss[x] * 10 >= magZ * 8;' & @CRLF & _
+			'    for (int y = 0; y < h; y++) {' & @CRLF & _
+			'      if (!tun[y]) continue;' & @CRLF & _
+			'      int max = 60;' & @CRLF & _
+			'      for (int x = 0; x < w; x++) { if (linie[x]) continue; int i = y * d.Stride + x * 4; int a = Math.Abs(p[i + 2] - bgR[y]) + Math.Abs(p[i + 1] - bgG[y]) + Math.Abs(p[i] - bgB[y]); if (a > max) max = a; }' & @CRLF & _
+			'      for (int x = 0; x < w; x++) {' & @CRLF & _
+			'        int i = y * d.Stride + x * 4; int c = 255;' & @CRLF & _
+			'        if (!linie[x]) { int a = (Math.Abs(p[i + 2] - bgR[y]) + Math.Abs(p[i + 1] - bgG[y]) + Math.Abs(p[i] - bgB[y])) * 255 / max; if (a > 255) a = 255; c = 255 - a; }' & @CRLF & _
+			'        p[i] = (byte)c; p[i + 1] = (byte)c; p[i + 2] = (byte)c; p[i + 3] = 255;' & @CRLF & _
+			'      }' & @CRLF & _
+			'    }' & @CRLF & _
+			'    Marshal.Copy(p, 0, d.Scan0, n); b.UnlockBits(d); return b;' & @CRLF & _
+			'  }' & @CRLF & _
+			'}' & @CRLF & _
+			'"@; Add-Type -Path $dll } catch { $aufb = $false } }' & @CRLF & _
 			'$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq ''AsTask'' -and ' & _
 			'$_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq ''IAsyncOperation`1'' })[0]' & @CRLF & _
 			'function Warte($op, [Type]$t) { $task = $asTask.MakeGenericMethod($t).Invoke($null, @($op)); $null = $task.Wait(-1); $task.Result }' & @CRLF & _
@@ -6361,8 +7439,29 @@ Func OcrStarten()
 			'while ($null -ne ($ein = [Console]::In.ReadLine())) {' & @CRLF & _
 			'  if ($ein -eq '''') { continue }' & @CRLF & _
 			'  try {' & @CRLF & _
+			'    $teile = $ein.Split(''|''); $ein = $teile[0]; $g1 = 0; $g2 = 0; $lu = 30; $zellen = $false' & @CRLF & _
+			'    if ($teile.Count -ge 5 -and $teile[1] -eq ''Z'') { $zellen = $true; $zx0 = [int]$teile[2]; $zx1 = [int]$teile[3]; $zys = $teile[4].Split('','') }' & @CRLF & _
+			'    elseif ($teile.Count -ge 3) { $g1 = [int]$teile[1]; $g2 = [int]$teile[2] }' & @CRLF & _
 			'    $aus = $ein + ''.3.png''' & @CRLF & _
-			'    $b = [Drawing.Bitmap]::FromFile($ein)' & @CRLF & _
+			'    $b0 = [Drawing.Bitmap]::FromFile($ein)' & @CRLF & _
+			'    if ($aufb) { $b1 = [MorBild]::Aufbereiten($b0); $b0.Dispose() } else { $b1 = $b0 }' & @CRLF & _
+			'    $w0 = $b1.Width; $h0 = $b1.Height' & @CRLF & _
+			'    if ($zellen) {' & @CRLF & _
+			'      $cw = $zx1 - $zx0; $ch = 18; $zl = 24; $zn = $zys.Count' & @CRLF & _
+			'      $b = New-Object Drawing.Bitmap -ArgumentList ($zl + $zn * ($cw + $zl)), ($ch + 2 * $zl)' & @CRLF & _
+			'      $gs = [Drawing.Graphics]::FromImage($b); $gs.Clear([Drawing.Color]::White); $px = [Drawing.GraphicsUnit]::Pixel' & @CRLF & _
+			'      for ($i = 0; $i -lt $zn; $i++) { $zy = [int]$zys[$i] - 9; if ($zy + $ch -gt $h0) { $zy = $h0 - $ch }; if ($zy -lt 0) { $zy = 0 }' & @CRLF & _
+			'        $gs.DrawImage($b1, (New-Object Drawing.Rectangle ($zl + $i * ($cw + $zl)), $zl, $cw, $ch), (New-Object Drawing.Rectangle $zx0, $zy, $cw, $ch), $px) }' & @CRLF & _
+			'      $gs.Dispose(); $b1.Dispose()' & @CRLF & _
+			'    } elseif ($g1 -gt 0 -and $g2 -gt $g1 -and $g2 -lt $w0) {' & @CRLF & _
+			'      $b = New-Object Drawing.Bitmap -ArgumentList ($w0 + 2 * $lu), $h0' & @CRLF & _
+			'      $gs = [Drawing.Graphics]::FromImage($b); $gs.Clear([Drawing.Color]::White)' & @CRLF & _
+			'      $px = [Drawing.GraphicsUnit]::Pixel' & @CRLF & _
+			'      $gs.DrawImage($b1, (New-Object Drawing.Rectangle 0, 0, $g1, $h0), (New-Object Drawing.Rectangle 0, 0, $g1, $h0), $px)' & @CRLF & _
+			'      $gs.DrawImage($b1, (New-Object Drawing.Rectangle ($g1 + $lu), 0, ($g2 - $g1), $h0), (New-Object Drawing.Rectangle $g1, 0, ($g2 - $g1), $h0), $px)' & @CRLF & _
+			'      $gs.DrawImage($b1, (New-Object Drawing.Rectangle ($g2 + 2 * $lu), 0, ($w0 - $g2), $h0), (New-Object Drawing.Rectangle $g2, 0, ($w0 - $g2), $h0), $px)' & @CRLF & _
+			'      $gs.Dispose(); $b1.Dispose()' & @CRLF & _
+			'    } else { $b = $b1; $g1 = 0 }' & @CRLF & _
 			'    $g = New-Object Drawing.Bitmap -ArgumentList ($b.Width * 3), ($b.Height * 3)' & @CRLF & _
 			'    $gr = [Drawing.Graphics]::FromImage($g)' & @CRLF & _
 			'    $gr.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic' & @CRLF & _
@@ -6374,8 +7473,11 @@ Func OcrStarten()
 			'    $d = Warte ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($st)) ([Windows.Graphics.Imaging.BitmapDecoder])' & @CRLF & _
 			'    $bm = Warte ($d.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])' & @CRLF & _
 			'    $r = Warte ($e.RecognizeAsync($bm)) ([Windows.Media.Ocr.OcrResult])' & @CRLF & _
-			'    foreach ($l in $r.Lines) { $q = $l.Words[0].BoundingRect; ' & _
-			'[Console]::Out.WriteLine(([int]($q.X / 3)).ToString() + '';'' + ([int]($q.Y / 3)).ToString() + '';'' + ([int]($q.Height / 3)).ToString() + '';'' + $l.Text) }' & @CRLF & _
+			'    if ($zellen) { foreach ($l in $r.Lines) { foreach ($w in $l.Words) { $q = $w.BoundingRect' & @CRLF & _
+			'      $zi = [int][Math]::Floor((($q.X + $q.Width / 2) / 3 - $zl) / ($cw + $zl)); [Console]::Out.WriteLine(''Z;'' + $zi.ToString() + '';'' + $w.Text) } } }' & @CRLF & _
+			'    else { foreach ($l in $r.Lines) { foreach ($w in $l.Words) { $q = $w.BoundingRect; $x = [int]($q.X / 3)' & @CRLF & _
+			'      if ($g1 -gt 0) { if ($x -ge $g2 + 2 * $lu) { $x -= 2 * $lu } elseif ($x -ge $g1 + $lu) { $x -= $lu } }' & @CRLF & _
+			'      [Console]::Out.WriteLine($x.ToString() + '';'' + ([int]($q.Y / 3)).ToString() + '';'' + ([int]($q.Height / 3)).ToString() + '';'' + $w.Text) } } }' & @CRLF & _
 			'    $bm.Dispose(); $st.Dispose()' & @CRLF & _
 			'  } catch { [Console]::Out.WriteLine(''FEHLER: '' + $_.Exception.Message) }' & @CRLF & _
 			'  [Console]::Out.WriteLine(''ENDE''); [Console]::Out.Flush()' & @CRLF & _
@@ -6385,7 +7487,8 @@ Func OcrStarten()
 	FileWrite($fh, $s)
 	FileClose($fh)
 	; 1 + 2 + 4 = $STDIN_CHILD + $STDOUT_CHILD + $STDERR_CHILD
-	$gOcrPid = Run('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' & $ps & '"', "", @SW_HIDE, 1 + 2 + 4)
+	$gOcrPid = Run('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' & $ps & '" ' & _
+			((Einst("Karteikarte", "Aufbereiten", "1") = "1") ? "1" : "0"), "", @SW_HIDE, 1 + 2 + 4)
 	If Not $gOcrPid Then Return "PowerShell nicht gestartet"
 	$gOcrPuffer = ""
 	Local $antwort = OcrAntwort("BEREIT", 20000)
@@ -6396,10 +7499,23 @@ Func OcrStarten()
 	Return ""
 EndFunc
 
-; ein Bild erkennen lassen: Zeilen "x;y;Hoehe;Text", bei Fehler @error und der Grund
-Func OcrLesen($bild)
+; ein Bild erkennen lassen: Zeilen "x;y;Hoehe;Text", bei Fehler @error und der Grund; $streifen = "|x1|x2": an
+; diesen Stellen (Pixel im Bild) vorher je einen breiten weissen Streifen einsetzen, damit Woerter benachbarter
+; Spalten nicht zusammenwachsen (die x der Woerter sind danach wieder die im Originalbild)
+Func OcrLesen($bild, $streifen = "")
 	If Not $gOcrPid Or Not ProcessExists($gOcrPid) Then Return SetError(1, 0, "PowerShell l" & ChrW(228) & "uft nicht mehr")
-	StdinWrite($gOcrPid, StringToBinary($bild & @CRLF, 4))
+	StdinWrite($gOcrPid, StringToBinary($bild & $streifen & @CRLF, 4))
+	Local $txt = OcrAntwort("ENDE", 15000)
+	If @error Then Return SetError(1, 0, $txt)
+	If StringLeft($txt, 7) = "FEHLER:" Then Return SetError(1, 0, StringTrimLeft($txt, 8))
+	Return $txt
+EndFunc
+
+; Zellen erkennen lassen: aus $bild die Rechtecke x $x0 bis $x1 um die Hoehen $ys ("y1,y2,...", Zeilenmitten) nebeneinander
+; in eine Zeile gelegt; Rueckgabe Zeilen "Z;Nummer der Zelle;Wort", bei Fehler @error
+Func OcrZellen($bild, $x0, $x1, $ys)
+	If Not $gOcrPid Or Not ProcessExists($gOcrPid) Then Return SetError(1, 0, "PowerShell l" & ChrW(228) & "uft nicht mehr")
+	StdinWrite($gOcrPid, StringToBinary($bild & "|Z|" & $x0 & "|" & $x1 & "|" & $ys & @CRLF, 4))
 	Local $txt = OcrAntwort("ENDE", 15000)
 	If @error Then Return SetError(1, 0, $txt)
 	If StringLeft($txt, 7) = "FEHLER:" Then Return SetError(1, 0, StringTrimLeft($txt, 8))
