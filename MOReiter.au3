@@ -35,6 +35,8 @@
 ;                              und einen danach erscheinenden Leistungsdialog mit "Uebernehmen" bestaetigen
 ;            Strg+Alt+A        nur in der MO-Tagesuebersicht bei "Offene To-Dos": markierte Zeile als
 ;                              erledigt abhaken und die nachrueckende Zeile markieren
+;            Strg+P, Strg+Umsch+P, Strg+A, Strg+I (alle [Aufrufe] mit {pat}) auch in der Tagesuebersicht, mit
+;                              dem Patienten der markierten Zeile (aus der Statuszeile unten links)
 ;            Strg+Alt+Umsch+A  in der Tagesuebersicht: Maus auf die Spalte "Bereich" halten und druecken
 ;            Alt+Pfeil hoch/runter  nur in der MO-Tagesuebersicht: in der Bereichsauswahl links den Eintrag
 ;                              ueber bzw. unter dem gelb umrandeten anklicken (vom obersten zum untersten
@@ -480,6 +482,9 @@ Func HookAufgabe($vk)
 						_WinAPI_GetClassName(_WinAPI_GetForegroundWindow()) & " """ & _WinAPI_GetWindowText(_WinAPI_GetForegroundWindow()) & """)") & _
 						($mo ? ", " & $gFokusInfo : "") & " -> " & (($mo And Not $text) ? "Aufruf" : "durchgelassen"))
 				If $mo And Not $text Then Return "Aufruf:" & $i
+				; Befehlszeilen mit {pat} (Laufzettel, FreeCommander ...) auch in der Tagesuebersicht, mit dem
+				; Patienten der markierten Zeile (aus der Statuszeile)
+				If StringInStr($gAufrufe[$i][3], "{pat}") And TagesAktiv() Then Return "Aufruf:" & $i
 				; Strg+S auch in der Patientenliste von Smart Pix (Geburtsdatum nachtragen)
 				If $gAufrufe[$i][3] = "SmartPix" And SmartPixListeAktiv() Then Return "Aufruf:" & $i
 				ExitLoop
@@ -1525,7 +1530,12 @@ Func AufrufBefehl($name, $befehl)
 		; F6 (falls die Personalien fehlen) darf nicht als Strg+F6 ankommen
 		If Not ModifierLos() Then Return Meldung("Strg bitte loslassen")
 		Local $nach, $vor, $geb
-		If Not PatientDaten($hMO, $nach, $vor, $geb) Then Return Meldung("Name und Geburtsdatum des Patienten nicht gefunden (Seite Personalien)")
+		If Not $gLink And TagesAktiv() Then
+			Local $tfehler = TagesPatient($nach, $vor, $geb)
+			If $tfehler <> "" Then Return Meldung($tfehler)
+		ElseIf Not PatientDaten($hMO, $nach, $vor, $geb) Then
+			Return Meldung("Name und Geburtsdatum des Patienten nicht gefunden (Seite Personalien)")
+		EndIf
 		$befehl = StringReplace($befehl, "{pat}", '"' & $nach & ";" & $vor & ";" & $geb & '"')
 	EndIf
 	Local $pid = Run($befehl), $fehler = @error
@@ -6177,6 +6187,125 @@ EndFunc
 ; ist die MO-Tagesuebersicht das aktive Fenster? (wird im Tastatur-Hook aufgerufen, muss schnell sein)
 Func TagesAktiv()
 	Return _WinAPI_GetClassName(_WinAPI_GetForegroundWindow()) = $TagesKlasse
+EndFunc
+
+; Tagesuebersicht: Patient der markierten Zeile aus der Statuszeile unten links ("70090, Kunz, Nicole,
+; 18.11.1984"). Die Statuszeile (TAdvOfficeStatusBar) malt ihren Text nur, daher: Bild davon, Texterkennung
+; von Windows (Windows.Media.Ocr ueber PowerShell), daraus Patientennummer und Geburtsdatum; Name und Vorname
+; dann aus der Datenbank, und nur wenn das Geburtsdatum dort zur Nummer passt (sonst waere eine falsch
+; erkannte Ziffer ein anderer Patient). Rueckgabe "" oder Fehlertext
+Func TagesPatient(ByRef $nach, ByRef $vor, ByRef $geb)
+	Local $hWnd = _WinAPI_GetForegroundWindow()
+	Local $hSB = ControlGetHandle($hWnd, "", "[CLASS:TAdvOfficeStatusBar; INSTANCE:1]")
+	If @error Or Not $hSB Then Return "Tagesuebersicht: Statuszeile nicht gefunden"
+	Local $p = WinGetPos($hSB)
+	If @error Or $p[2] < 10 Or $p[3] < 5 Then Return "Tagesuebersicht: Statuszeile nicht sichtbar"
+	HinweisStehend("Patient der markierten Zeile wird gelesen ...")
+	DirCreate(@AppDataDir & "\MOReiter")
+	Local $bild = @AppDataDir & "\MOReiter\Tagesstatus.png", $gross = @AppDataDir & "\MOReiter\Tagesstatus3.png"
+	_ScreenCapture_Capture($bild, $p[0], $p[1], $p[0] + $p[2] - 1, $p[1] + $p[3] - 1, False)
+	Local $txt = TextErkennung($bild, $gross)
+	If @error Then
+		ToolTip("")
+		Return "Tagesuebersicht: Texterkennung fehlgeschlagen: " & $txt
+	EndIf
+	If $gAufrufProtokoll Then Protokoll("Tagesuebersicht, Statuszeile erkannt: " & StringReplace($txt, @CRLF, " | "))
+	; erste Zahl, dann (ohne weitere Ziffern dazwischen, also ueber den Namen hinweg) das erste Datum
+	Local $m = StringRegExp($txt, "^\D{0,3}?(\d{1,8})\D*?(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})", 1)
+	If @error Then
+		ToolTip("")
+		Return 'Tagesuebersicht: kein Patient in der markierten Zeile (Statuszeile unten links erkannt als "' & _
+				StringLeft(StringReplace($txt, @CRLF, " "), 80) & '")'
+	EndIf
+	Local $nr = $m[0], $gebErk = StringFormat("%02d.%02d.%04d", Int($m[1]), Int($m[2]), Int($m[3]))
+	Local $cn = DBVerbinden("medoff")
+	If @error Then
+		ToolTip("")
+		Return $cn
+	EndIf
+	$gComFehler = ""
+	Local $rs = $cn.Execute("SELECT FNachname, FVorname, DATE_FORMAT(FGeburtsdatum, '%d.%m.%Y') FROM patstamm WHERE FSurogat=" & Int($nr))
+	If $gComFehler <> "" Or Not IsObj($rs) Then
+		Local $t = $gComFehler
+		$cn.Close
+		ToolTip("")
+		Return "Tagesuebersicht: Abfrage des Patienten " & $nr & " fehlgeschlagen: " & $t
+	EndIf
+	Local $gefunden = Not $rs.EOF
+	If $gefunden Then
+		$nach = StringStripWS($rs.Fields(0).Value, 3)
+		$vor = StringStripWS($rs.Fields(1).Value, 3)
+		$geb = String($rs.Fields(2).Value)
+	EndIf
+	$rs.Close
+	$cn.Close
+	ToolTip("")
+	If Not $gefunden Then Return "Tagesuebersicht: Patient Nr. " & $nr & " (so erkannt) gibt es nicht"
+	If $geb <> $gebErk Then Return "Tagesuebersicht: Nr. " & $nr & " ist " & $vor & " " & $nach & " (" & $geb & _
+			"), erkannt wurde aber Geburtsdatum " & $gebErk & "; zur Sicherheit nichts gestartet"
+	Return ""
+EndFunc
+
+; Texterkennung von Windows (Windows.Media.Ocr, Windows 10/11, Sprache aus dem Benutzerprofil) fuer das Bild
+; $bild, vorher dreifach vergroessert nach $gross (kleine Schrift erkennt sie sonst schlecht); Rueckgabe die
+; erkannten Zeilen, bei Fehler @error und der Grund
+Func TextErkennung($bild, $gross)
+	Local $ps = @TempDir & "\MOReiter-Texterkennung.ps1"
+	Local $s = 'param([string]$ein, [string]$aus)' & @CRLF & _
+			'$ErrorActionPreference = "Stop"' & @CRLF & _
+			'[Console]::OutputEncoding = [Text.Encoding]::UTF8' & @CRLF & _
+			'Add-Type -AssemblyName System.Drawing' & @CRLF & _
+			'Add-Type -AssemblyName System.Runtime.WindowsRuntime' & @CRLF & _
+			'$b = [Drawing.Bitmap]::FromFile($ein)' & @CRLF & _
+			'$g = New-Object Drawing.Bitmap -ArgumentList ($b.Width * 3), ($b.Height * 3)' & @CRLF & _
+			'$gr = [Drawing.Graphics]::FromImage($g)' & @CRLF & _
+			'$gr.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic' & @CRLF & _
+			'$gr.DrawImage($b, 0, 0, $g.Width, $g.Height)' & @CRLF & _
+			'$gr.Dispose(); $b.Dispose()' & @CRLF & _
+			'$g.Save($aus, [Drawing.Imaging.ImageFormat]::Png); $g.Dispose()' & @CRLF & _
+			'$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq "AsTask" -and ' & _
+			'$_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq ''IAsyncOperation`1'' })[0]' & @CRLF & _
+			'function Warte($op, [Type]$t) { $task = $asTask.MakeGenericMethod($t).Invoke($null, @($op)); $null = $task.Wait(-1); $task.Result }' & @CRLF & _
+			'$null = [Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime]' & @CRLF & _
+			'$null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]' & @CRLF & _
+			'$null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics, ContentType = WindowsRuntime]' & @CRLF & _
+			'$f = Warte ([Windows.Storage.StorageFile]::GetFileFromPathAsync($aus)) ([Windows.Storage.StorageFile])' & @CRLF & _
+			'$st = Warte ($f.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])' & @CRLF & _
+			'$d = Warte ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($st)) ([Windows.Graphics.Imaging.BitmapDecoder])' & @CRLF & _
+			'$bm = Warte ($d.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])' & @CRLF & _
+			'$e = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()' & @CRLF & _
+			'if ($e -eq $null) { Write-Output "FEHLER: keine Sprache fuer die Texterkennung installiert"; exit 1 }' & @CRLF & _
+			'$r = Warte ($e.RecognizeAsync($bm)) ([Windows.Media.Ocr.OcrResult])' & @CRLF & _
+			'foreach ($l in $r.Lines) { Write-Output $l.Text }' & @CRLF & _
+			'$st.Dispose()' & @CRLF
+	; 2 = ueberschreiben, 128 = UTF-8 mit BOM
+	Local $fh = FileOpen($ps, 2 + 128)
+	If $fh = -1 Then Return SetError(1, 0, "kann " & $ps & " nicht schreiben")
+	FileWrite($fh, $s)
+	FileClose($fh)
+	; 2 + 4 = $STDOUT_CHILD + $STDERR_CHILD
+	Local $pid = Run('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' & $ps & '" "' & $bild & '" "' & $gross & '"', _
+			"", @SW_HIDE, 2 + 4)
+	If Not $pid Then Return SetError(1, 0, "PowerShell nicht gestartet")
+	Local $bin = Binary(""), $err = Binary(""), $t = TimerInit()
+	While TimerDiff($t) < 20000
+		$bin &= StdoutRead($pid, False, True)
+		Local $ende = @error
+		$err &= StderrRead($pid, False, True)
+		If $ende And Not ProcessExists($pid) Then ExitLoop
+		Sleep(30)
+	WEnd
+	If ProcessExists($pid) Then
+		ProcessClose($pid)
+		Return SetError(1, 0, "PowerShell antwortet nicht")
+	EndIf
+	Local $txt = StringStripWS(BinaryToString($bin, 4), 3)
+	If StringLeft($txt, 7) = "FEHLER:" Then Return SetError(1, 0, StringTrimLeft($txt, 8))
+	If $txt = "" Then
+		Local $fehler = StringStripWS(BinaryToString($err, 4), 3)
+		If $fehler <> "" Then Return SetError(1, 0, StringLeft($fehler, 300))
+	EndIf
+	Return $txt
 EndFunc
 
 ; Tagesuebersicht: in der Bereichsauswahl links den Eintrag ueber ($richtung = -1) bzw. unter (1) dem
