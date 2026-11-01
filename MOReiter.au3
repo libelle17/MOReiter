@@ -77,6 +77,8 @@
 ;            Die Tasten werden per Tastatur-Hook abgefangen (nicht per HotKeySet), weil nur so linkes Alt
 ;            von AltGr unterschieden werden kann: AltGr kommt als linke Strg + rechte Alt an und bleibt
 ;            unberuehrt, so dass AltGr+2 3 7 8 9 0 sz weiterhin hoch2 hoch3 { [ ] } \ liefern.
+;            RemotePC liefert AltGr als linke Strg + linke Alt, die Alt aber mit Scancode 0x38 (echte linke
+;            Alt: 0); das gilt ebenfalls als AltGr ([Allgemein] AltGrAbstand=ms, 0 = aus).
 ;            (Das fruehere Durchreichen per Send liess gelegentlich die Strg-Taste haengen.)
 ;            im Fenster "MEDICAL OFFICE - Briefversand" statt der obigen Belegung:
 ;            Strg+Alt+K Kontaktverzeichnis, I KIM-Verzeichnis, R Krankenblatt, O Ordner (Anhaenge),
@@ -197,6 +199,15 @@ Global $gFolge = "", $gFolgeZeit = 0
 ; $Kennung eingespeisten Tasten); gilt statt GetAsyncKeyState, solange MOReiter sie Windows gegenueber
 ; als losgelassen gemeldet hat ($gLosGemeldet), obwohl sie noch gehalten werden (hoechstens 10 s)
 Global $gGehaltenMod[3] = [False, False, False], $gLosGemeldet = False, $gLosZeit = 0
+; AltGr ueber Fernsteuerungen: RemotePC liefert AltGr als linke Strg + linke Alt, also wie Strg+Alt, die Alt
+; aber mit Scancode 0x38, eine echte linke Alt dagegen mit Scancode 0 (beide eingespeist, beide ohne
+; Extended-Bit, Strg und Alt in beiden Faellen rund 16 ms nacheinander). Eingespeiste linke Alt mit Scancode
+; 0x38 und Strg hoechstens [Allgemein] AltGrAbstand ms (0 = aus) nacheinander gelten deshalb als AltGr, bis
+; Strg oder Alt losgelassen ist. Zeitpunkte des letzten Drueckens von Strg bzw. linker Alt, deren Scancode,
+; Verdacht, Abstand; [Allgemein] TastenProtokoll=1: Strg/Alt/Umsch und Tasten waehrend Strg oder Alt mit
+; Scancode, Flags und Abstand nach %APPDATA%\MOReiter\Aufrufe.log
+Global $gStrgZeit = 0, $gAltZeit = 0, $gAltScan = 0, $gAltGrVerdacht = False, $gAltGrAbstand = 50, $gTastenProtokoll = False, _
+		$gTasteZuletzt = TimerInit()
 Const $Kennung = 0x4D4F5231 ; "MOR1" in dwExtraInfo eigener Tastenereignisse
 Const $defFolgeZeit = 2000 ; ms, eine laengere Pause zwischen zwei Ziffern beginnt eine neue Folge
 ; Einblendung: Fenster mit den Schildchen, zugehoeriges Fenster und dessen Kurzwahl-Knoepfe,
@@ -369,9 +380,26 @@ Func TastenHook($nCode, $wParam, $lParam)
 		Local $vk = $kb.vkCode
 		; Strg/Alt mitverfolgen, eigene eingespeiste Ereignisse nicht
 		If $vk >= 0xA2 And $vk <= 0xA4 And $kb.dwExtraInfo <> $Kennung Then
-			$gGehaltenMod[$vk - 0xA2] = Not ($wParam = $WM_KEYUP Or $wParam = $WM_SYSKEYUP)
+			Local $unten = Not ($wParam = $WM_KEYUP Or $wParam = $WM_SYSKEYUP)
+			If Not $unten Then
+				$gAltGrVerdacht = False
+			ElseIf Not $gGehaltenMod[$vk - 0xA2] Then
+				; neu gedrueckt (nicht die automatische Wiederholung): AltGr einer Fernsteuerung?
+				; 0x10 = LLKHF_INJECTED, die echte Tastatur bleibt unberuehrt
+				Local $strg = ($vk <> 0xA4), $andere = $strg ? $gGehaltenMod[2] : ($gGehaltenMod[0] Or $gGehaltenMod[1])
+				If $strg Then
+					$gStrgZeit = TimerInit()
+				Else
+					$gAltZeit = TimerInit()
+					$gAltScan = BitAND($kb.flags, 0x10) ? $kb.scanCode : 0
+				EndIf
+				If $andere And $gAltGrAbstand > 0 And BitAND($kb.flags, 0x10) And $gAltScan = 0x38 _
+						And TimerDiff($strg ? $gAltZeit : $gStrgZeit) <= $gAltGrAbstand Then $gAltGrVerdacht = True
+			EndIf
+			$gGehaltenMod[$vk - 0xA2] = $unten
 			If Not ($gGehaltenMod[0] Or $gGehaltenMod[1] Or $gGehaltenMod[2]) Then $gLosGemeldet = False
 		EndIf
+		If $gTastenProtokoll Then TasteProtokollieren($kb, $wParam)
 		If $wParam = $WM_KEYUP Or $wParam = $WM_SYSKEYUP Then
 			; zum geschluckten Druecken auch das Loslassen schlucken
 			If StringInStr($gUnten, "," & $vk & ",") Then
@@ -501,6 +529,12 @@ EndFunc
 
 ; Strg + linke Alt gehalten, aber nicht AltGr (kommt als linke Strg + rechte Alt)
 Func StrgAlt()
+	; AltGr einer Fernsteuerung (nach den selbst mitverfolgten Tasten, GetAsyncKeyState hinkt dem Hook
+	; hinterher und meldete die gerade gedrueckte Alt noch als los)
+	If $gAltGrVerdacht Then
+		If ($gGehaltenMod[0] Or $gGehaltenMod[1]) And $gGehaltenMod[2] Then Return False
+		$gAltGrVerdacht = False
+	EndIf
 	If $gLosGemeldet And TimerDiff($gLosZeit) > 10000 Then $gLosGemeldet = False
 	If $gLosGemeldet Then Return ($gGehaltenMod[0] Or $gGehaltenMod[1]) And $gGehaltenMod[2] And Not Gedrueckt(0xA5)
 	Return (Gedrueckt(0xA2) Or Gedrueckt(0xA3)) And Gedrueckt(0xA4) And Not Gedrueckt(0xA5)
@@ -1421,6 +1455,8 @@ Func AufrufeLaden()
 		Next
 	Next
 	$gAufrufProtokoll = (Einst("Aufrufe", "Protokoll", "0") = "1")
+	$gAltGrAbstand = Int(Einst("Allgemein", "AltGrAbstand", "50"))
+	$gTastenProtokoll = (Einst("Allgemein", "TastenProtokoll", "0") = "1")
 	If $gAufrufProtokoll Then Protokoll("MOReiter gestartet (" & @ScriptFullPath & ", Stand " & Stand() & "), " & $n & " Aufrufe eingerichtet")
 EndFunc
 
@@ -1435,6 +1471,18 @@ Func VorgabenPruefen()
 	EndIf
 	Protokoll("MOReiter-Vorgaben.ini fehlt und l" & ChrW(228) & "sst sich nicht anlegen: " & $IniVorgaben)
 	Return False
+EndFunc
+
+; [Allgemein] TastenProtokoll=1: Strg, Alt, Umsch, Windowstaste und alle Tasten, solange Strg oder Alt gehalten
+; werden (sonst nichts, damit kein geschriebener Text im Protokoll landet)
+Func TasteProtokollieren($kb, $wParam)
+	Local $vk = $kb.vkCode, $mod = ($vk >= 0x10 And $vk <= 0x12) Or ($vk >= 0xA0 And $vk <= 0xA5) Or $vk = 0x5B Or $vk = 0x5C
+	If Not $mod And Not (Gedrueckt(0x11) Or Gedrueckt(0x12)) Then Return
+	Local $ms = Round(TimerDiff($gTasteZuletzt), 1)
+	$gTasteZuletzt = TimerInit()
+	Protokoll("Taste " & Hex($vk, 2) & (($wParam = $WM_KEYUP Or $wParam = $WM_SYSKEYUP) ? " los" : " ab ") & _
+			", Scan " & Hex($kb.scanCode, 3) & ", Flags " & Hex($kb.flags, 2) & _
+			", +" & $ms & " ms, AltGr-Verdacht " & $gAltGrVerdacht)
 EndFunc
 
 Func Protokoll($txt)

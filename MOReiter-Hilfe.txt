@@ -312,6 +312,11 @@ gilt der eingebaute Wert. Alle drei haben denselben Aufbau; Kalibrieren schreibt
 [Allgemein]   EchteMaus=1        mit der echten Maus klicken statt per Fensternachricht
               Einblendung=500    ms Halten bis zu den Schildchen, 0 = nie
               FolgeZeit=2000     ms Pause, nach der eine Ziffernfolge neu beginnt
+              AltGrAbstand=50    RemotePC liefert AltGr als linke Strg + linke Alt mit Scancode 0x38 (echte
+                                 linke Alt: 0); kommen beide höchstens so viele ms nacheinander, gelten sie
+                                 als AltGr (AltGr+ß = \ usw. kommt durch); 0 = aus; echte Tastatur unberührt
+              TastenProtokoll=1  Strg/Alt/Umsch und die Tasten dabei mit Abstand in ms nach
+                                 %APPDATA%\MOReiter\Aufrufe.log (zum Einstellen von AltGrAbstand)
               PdfText=...        pdftotext.exe: Zeitraum eines abgelegten Berichts aus dem PDF lesen
               Autostart=0        Einrichten.bat legt keine Verknüpfung im Autostart-Ordner an (z.B. wo ein
                                  Anmeldeskript MOReiter startet)
