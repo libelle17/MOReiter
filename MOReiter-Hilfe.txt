@@ -29,6 +29,9 @@ Strg+Alt+K          2. Reiter (z.B. "Kartei"); ist er schon aktiv: 1. Reiter
 Strg+Alt+P          3. Reiter (z.B. "ePA"); ist er schon aktiv: 4. Reiter (z.B. "ePAAbr")
 Strg+Alt+U          ("unten") die Liste im Container Karteikarte aktivieren, so dass Pfeiltasten usw.
                     dort wirken; ist keine sichtbar, vorher zum Krankenblatt wechseln
+Strg+Umsch+G        Karteikarte: fragt ein Datum ab (z.B. 3.5.24, 5.24 = Monatsanfang, 2024) und blättert
+                    zur ersten Zeile ab diesem Tag (liest die Datumsspalte mit der Texterkennung von
+                    Windows); gibt es an dem Tag nichts, zum nächsten Tag mit Einträgen
 Strg+Alt+T          aus jedem Programm: die Termine des Patienten zeigen, solange Strg+Alt+T gehalten
                     wird (Medical Office nach vorn, F6, Alt+T; beim Loslassen F6 und zurück ins
                     vorige Programm)
@@ -333,6 +336,7 @@ gilt der eingebaute Wert. Alle drei haben denselben Aufbau; Kalibrieren schreibt
               Warten=400         ms nach dem Reiterwechsel
               X, Y, Abstand      links: Lage des ersten Filters und Zeilenabstand (schreibt das Kalibrieren)
 [Karteikarte] Art=Klick          Strg+Alt+U klickt in die markierte Zeile statt nur den Fokus zu setzen
+              DatumBreite=62     Strg+Umsch+G: Breite der Datumsspalte in Pixeln
 [Termine]     Warten=200         ms zwischen F6 und Alt+T
 [Labor]       Url=...            Adresse der Patientensuche; ohne sie ist der Laborabruf abgeschaltet
               Titel=Onlinebefunde   Seitentitel des Portals

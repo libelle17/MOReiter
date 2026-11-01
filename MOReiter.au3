@@ -35,6 +35,8 @@
 ;                              und einen danach erscheinenden Leistungsdialog mit "Uebernehmen" bestaetigen
 ;            Strg+Alt+A        nur in der MO-Tagesuebersicht bei "Offene To-Dos": markierte Zeile als
 ;                              erledigt abhaken und die nachrueckende Zeile markieren
+;            Strg+Umsch+G      ([Aufrufe] Strg+Umsch+G=Datum) Karteikarte: fragt ein Datum ab, blaettert zur
+;                              ersten Zeile ab diesem Tag (Datumsspalte per Texterkennung) und klickt sie an
 ;            Strg+P, Strg+Umsch+P, Strg+A, Strg+I (alle [Aufrufe] mit {pat}) auch in der Tagesuebersicht, mit
 ;                              dem Patienten der markierten Zeile (aus der Statuszeile unten links)
 ;            Strg+Alt+Umsch+A  in der Tagesuebersicht: Maus auf die Spalte "Bereich" halten und druecken
@@ -246,6 +248,8 @@ Global $gSmartPixNachtrag = "", $gSmartPixNachtragZeit = 0
 Global $gSmartPixWarnung = ""
 ; Text der letzten Meldung (fuer die Abschlussmeldung der Smart Pix-Liste, wo der Hinweis sonst verloren ginge)
 Global $gMeldung = ""
+; Strg+Umsch+G: zuletzt eingegebenes Datum; laufende Texterkennung (PowerShell) und deren noch nicht gelesene Ausgabe
+Global $gKarteiDatum = "", $gOcrPid = 0, $gOcrPuffer = ""
 ; Ablaufprotokoll der Smart Pix-Liste (Pfad, waehrend des Durchgangs; "" = keins)
 Global $gSpLog = "", $gSpNochmal = False, $gSpTabs = 0
 ; Geburtsdatum in der Smart Pix-Liste: Tag, Monat, Jahr (2- oder 4-stellig), getrennt durch Punkte (auch doppelt),
@@ -480,8 +484,10 @@ Func HookAufgabe($vk)
 				Local $mo = MOAktiv(), $text = $mo ? TextFokus() : False
 				If $gAufrufProtokoll Then Protokoll($gAufrufe[$i][0] & ": " & ($mo ? "Medical Office" : "nicht Medical Office (" & _
 						_WinAPI_GetClassName(_WinAPI_GetForegroundWindow()) & " """ & _WinAPI_GetWindowText(_WinAPI_GetForegroundWindow()) & """)") & _
-						($mo ? ", " & $gFokusInfo : "") & " -> " & (($mo And Not $text) ? "Aufruf" : "durchgelassen"))
+						($mo ? ", " & $gFokusInfo : "") & " -> " & (($mo And (Not $text Or $gAufrufe[$i][3] = "Datum")) ? "Aufruf" : "durchgelassen"))
 				If $mo And Not $text Then Return "Aufruf:" & $i
+				; Strg+Umsch+G=Datum auch aus einem Eingabefeld (z.B. "Suchtext" der Karteikarte, wo der Cursor oft steht)
+				If $mo And $gAufrufe[$i][3] = "Datum" Then Return "Aufruf:" & $i
 				; Befehlszeilen mit {pat} (Laufzettel, FreeCommander ...) auch in der Tagesuebersicht, mit dem
 				; Patienten der markierten Zeile (aus der Statuszeile)
 				If StringInStr($gAufrufe[$i][3], "{pat}") And TagesAktiv() Then Return "Aufruf:" & $i
@@ -1513,6 +1519,8 @@ Func Aufruf($i)
 	Local $befehl = $gAufrufe[$i][3]
 	; Strg+Z=Zucker: alle Portale bzw. Programme nach den Zucker-Markierungen des Patienten
 	If $befehl = "Zucker" Then Return Zucker()
+	; Strg+Umsch+G=Datum: Karteikarte zu einem Datum blaettern
+	If $befehl = "Datum" Then Return KarteiDatum()
 	Return AufrufBefehl($gAufrufe[$i][0], $befehl)
 EndFunc
 
@@ -4150,6 +4158,8 @@ Func AufrufBeschreibung($b)
 			Return "Smart Pix-Patientenliste mit Medical Office abgleichen"
 		Case "Zucker"
 			Return "alle Zuckerportale nach den Markierungen"
+		Case "Datum"
+			Return "Karteikarte: zu einem Datum bl" & ChrW(228) & "ttern"
 	EndSwitch
 	If $b = "Portal:Labor" Then Return "Onlinebefunde des Labors im Firefox"
 	If StringLeft($b, 7) = "Portal:" Then Return "Portal " & StringTrimLeft($b, 7) & " im Firefox"
@@ -6114,6 +6124,317 @@ EndFunc
 Func KarteiGrid($h)
 	Return _WinAPI_GetClassName($h) = "TmoStringGrid" And _WinAPI_IsWindowVisible($h) _
 			And _WinAPI_GetClassName(_WinAPI_GetParent($h)) = "TfrmKarteikarteControl"
+EndFunc
+
+; Strg+Umsch+G ([Aufrufe] Strg+Umsch+G=Datum): fragt ein Datum ab und blaettert die Liste der Karteikarte
+; (neueste unten, das Datum steht nur in der ersten Zeile eines Tages) zur ersten Zeile ab diesem Datum und
+; klickt sie an. Die Liste hat keine ansprechbaren Zeilen, daher: Datumsspalte per Texterkennung lesen
+; (KarteiSeite), mit Bild auf/ab blaettern, erst mit wachsenden Spruengen, nach dem Ueberschiessen mit
+; halbierten zurueck, bis das Datum im Bild ist oder zwischen zwei benachbarten Seiten liegt.
+; [Karteikarte] DatumBreite = Breite der Datumsspalte in Pixeln (vom linken Rand der Liste)
+Func KarteiDatum()
+	Local $hWnd = WinGetHandle($MOFenster)
+	If @error Then Return MOStarten()
+	If Not ModifierLos() Then Return Meldung("Strg und Umschalt bitte loslassen")
+	Local $hGrid = KarteiListe($hWnd)
+	If Not $hGrid Then Return Meldung("Keine Karteikarte sichtbar")
+	Local $ein = InputBox("MOReiter", "Zu welchem Datum bl" & ChrW(228) & "ttern?" & @CRLF & _
+			"z.B. 3.5.24, 3.5.2024, 5.24 (Monatsanfang) oder 2024 (Jahresanfang)", $gKarteiDatum, "", 340, 150)
+	If @error Then Return False
+	Local $ziel = DatumEingabe($ein)
+	If $ziel = "" Then Return Meldung("Datum nicht verstanden: " & $ein)
+	$gKarteiDatum = $ein
+	Local $zielText = DatumText($ziel)
+	WinActivate($hWnd)
+	WinWaitActive($hWnd, "", 2)
+	ControlFocus($hWnd, "", $hGrid)
+	HinweisStehend("Bl" & ChrW(228) & "ttere zum " & $zielText & " ...")
+	Local $fehler = OcrStarten()
+	If $fehler <> "" Then
+		ToolTip("")
+		Return Meldung("Texterkennung nicht gestartet: " & $fehler)
+	EndIf
+	Local $erg = KarteiDatumSuchen($hWnd, $hGrid, $ziel, $zielText)
+	OcrBeenden()
+	ToolTip("")
+	If $erg <> "" Then Return Meldung($erg)
+	Return True
+EndFunc
+
+; eigentliche Suche; Rueckgabe "" (gefunden und angeklickt, ggf. mit Hinweis) oder Fehlertext
+Func KarteiDatumSuchen($hWnd, $hGrid, $ziel, $zielText)
+	Local $seite, $richtung = 0, $schritt = 1, $gewechselt = False, $vorher = 0
+	For $runde = 1 To 60
+		Local $summe = KarteiSeite($hGrid, $seite)
+		If @error Then Return $seite
+		Local $n = UBound($seite)
+		If $gAufrufProtokoll Then Protokoll("Strg+Umsch+G Runde " & $runde & ": " & $n & " Daten" & _
+				(($n > 0) ? " " & $seite[0][0] & " - " & $seite[$n - 1][0] : "") & ", Schritt " & $schritt & " " & $richtung)
+		; ganz oben bzw. unten angekommen: Seite hat sich nicht geaendert
+		Local $amEnde = ($runde > 1 And $summe = $vorher)
+		$vorher = $summe
+		Local $neu = 0
+		If $n = 0 Then
+			; nur Zeilen eines einzigen (laengeren) Tages im Bild: weiter in der bisherigen Richtung, sonst abwaerts
+			$neu = ($richtung = 0) ? 1 : $richtung
+			If $amEnde Then $neu = -$neu
+		ElseIf $ziel < $seite[0][0] Then
+			$neu = -1
+		ElseIf $ziel > $seite[$n - 1][0] Then
+			$neu = 1
+		Else
+			; im Bild: erste Zeile mit Datum >= Ziel
+			For $i = 0 To $n - 1
+				If $seite[$i][0] >= $ziel Then Return KarteiZeileKlicken($hWnd, $hGrid, $seite[$i][1], $seite[$i][0], $ziel, $zielText)
+			Next
+		EndIf
+		If $n > 0 And $amEnde And $neu = $richtung Then
+			; Anfang bzw. Ende der Karteikarte erreicht
+			If $neu < 0 Then Return KarteiZeileKlicken($hWnd, $hGrid, $seite[0][1], $seite[0][0], $ziel, $zielText)
+			Return KarteiZeileKlicken($hWnd, $hGrid, $seite[$n - 1][1], $seite[$n - 1][0], $ziel, $zielText, True)
+		EndIf
+		If $richtung <> 0 And $neu <> $richtung Then
+			; ueberschossen: zurueck mit halbem Schritt; war es schon ein einzelner, liegt das Ziel zwischen
+			; dieser und der benachbarten Seite: auf die untere und deren erstes Datum (das naechste nach dem Ziel)
+			If $schritt = 1 Then
+				If $neu = 1 Then
+					KarteiBlaettern($hGrid, 1, 1)
+					$summe = KarteiSeite($hGrid, $seite)
+					If @error Then Return $seite
+				EndIf
+				If UBound($seite) = 0 Then Return "Kein Datum im Bild, bitte noch einmal versuchen"
+				Return KarteiZeileKlicken($hWnd, $hGrid, $seite[0][1], $seite[0][0], $ziel, $zielText)
+			EndIf
+			$schritt = Int($schritt / 2)
+			$gewechselt = True
+		ElseIf $richtung <> 0 And Not $gewechselt Then
+			$schritt = ($schritt < 64) ? $schritt * 2 : 64
+		EndIf
+		$richtung = $neu
+		KarteiBlaettern($hGrid, $richtung, $schritt)
+	Next
+	Return "Datum " & $zielText & " nach 60 Versuchen nicht gefunden"
+EndFunc
+
+; klickt die Zeile in Hoehe $y (Bildschirm) in der Datumsspalte an; Hinweis, wenn es nicht genau das Ziel ist
+Func KarteiZeileKlicken($hWnd, $hGrid, $y, $datum, $ziel, $zielText, $davor = False)
+	Local $g = WinGetPos($hGrid)
+	If @error Then Return "Karteikarte nicht sichtbar"
+	If Not KlickPunkt($hWnd, $g[0] + 20, $y, "Karteikarte verdeckt") Then Return $gMeldung
+	If $datum = $ziel Then
+		Hinweis($zielText)
+	ElseIf $davor Then
+		Hinweis("Nach dem " & $zielText & " keine Eintr" & ChrW(228) & "ge mehr; letzter Tag " & DatumText($datum))
+	ElseIf $datum > $ziel Then
+		Hinweis("Am " & $zielText & " kein Eintrag; n" & ChrW(228) & "chster am " & DatumText($datum))
+	Else
+		Hinweis("Karteikarte beginnt am " & DatumText($datum))
+	EndIf
+	Return ""
+EndFunc
+
+; $anzahl mal Bild auf ($richtung -1) bzw. ab (1) an die Liste schicken und warten, bis sie ruhig ist
+Func KarteiBlaettern($hGrid, $richtung, $anzahl)
+	Local $vk = ($richtung < 0) ? 0x21 : 0x22 ; VK_PRIOR, VK_NEXT
+	For $i = 1 To $anzahl
+		_WinAPI_PostMessage($hGrid, 0x100, $vk, 0) ; WM_KEYDOWN
+		_WinAPI_PostMessage($hGrid, 0x101, $vk, 0xC0000001) ; WM_KEYUP
+	Next
+	Local $g = WinGetPos($hGrid)
+	If @error Then Return
+	Local $t = TimerInit(), $alt = 0, $gleich = 0
+	Sleep(60)
+	While TimerDiff($t) < 3000
+		Local $s = PixelChecksum($g[0], $g[1] + $KbKopfHoehe, $g[0] + $g[2] - 1, $g[1] + $g[3] - 1)
+		If $s = $alt Then
+			$gleich += 1
+			If $gleich >= 2 Then ExitLoop
+		Else
+			$gleich = 0
+			$alt = $s
+		EndIf
+		Sleep(60)
+	WEnd
+EndFunc
+
+; Datumsspalte der sichtbaren Liste lesen: $seite[n][2] = JJJJMMTT, Bildschirm-y der Zeilenmitte (von oben nach
+; unten); Rueckgabe Pruefsumme der Spalte (zum Erkennen von Anfang/Ende), bei Fehler @error und $seite = Text
+Func KarteiSeite($hGrid, ByRef $seite)
+	Local $g = WinGetPos($hGrid)
+	If @error Then
+		$seite = "Karteikarte nicht sichtbar"
+		Return SetError(1, 0, 0)
+	EndIf
+	Local $b = Int(Einst("Karteikarte", "DatumBreite", "62"))
+	Local $x1 = $g[0] + 1, $y1 = $g[1] + $KbKopfHoehe, $x2 = $g[0] + $b, $y2 = $g[1] + $g[3] - 2
+	Local $summe = PixelChecksum($x1, $y1, $x2, $y2)
+	Local $bild = @AppDataDir & "\MOReiter\Karteidatum.png"
+	DirCreate(@AppDataDir & "\MOReiter")
+	_ScreenCapture_Capture($bild, $x1, $y1, $x2, $y2, False)
+	Local $woerter = OcrLesen($bild)
+	If @error Then
+		$seite = "Texterkennung: " & $woerter
+		Return SetError(1, 0, 0)
+	EndIf
+	Local $erg[0][2], $jj = Int(StringRight(@YEAR, 2))
+	For $w In StringSplit(StringStripCR($woerter), @LF, 2)
+		Local $f = StringSplit($w, ";", 2)
+		If UBound($f) < 4 Then ContinueLoop
+		; Rest der Zeile (falls die Spalte "Zeit" angeschnitten ist) stoert nicht
+		Local $m = StringRegExp(StringStripWS($f[3], 8), "^\D?(\d{1,2})[.,](\d{1,2})[.,](\d{4}|\d{2})", 1)
+		If @error Then ContinueLoop
+		Local $t = Int($m[0]), $mo = Int($m[1]), $j = Int($m[2])
+		If $t < 1 Or $t > 31 Or $mo < 1 Or $mo > 12 Then ContinueLoop
+		If $j < 100 Then $j += ($j <= $jj + 1) ? 2000 : 1900
+		Local $n = UBound($erg)
+		ReDim $erg[$n + 1][2]
+		$erg[$n][0] = StringFormat("%04d%02d%02d", $j, $mo, $t)
+		$erg[$n][1] = $y1 + Int($f[1]) + Int(Int($f[2]) / 2)
+	Next
+	; nach y sortieren (die Texterkennung liefert Zeilen meist schon von oben nach unten)
+	For $i = 1 To UBound($erg) - 1
+		Local $d = $erg[$i][0], $y = $erg[$i][1], $k = $i - 1
+		While $k >= 0
+			If $erg[$k][1] <= $y Then ExitLoop
+			$erg[$k + 1][0] = $erg[$k][0]
+			$erg[$k + 1][1] = $erg[$k][1]
+			$k -= 1
+		WEnd
+		$erg[$k + 1][0] = $d
+		$erg[$k + 1][1] = $y
+	Next
+	$seite = $erg
+	Return $summe
+EndFunc
+
+; "3.5.24", "3.5.2024", "5.24", "5.2024", "2024" -> JJJJMMTT (Monats- bzw. Jahresanfang), sonst ""
+Func DatumEingabe($s)
+	$s = StringRegExpReplace(StringStripWS($s, 3), "[,/-]", ".")
+	Local $jj = Int(StringRight(@YEAR, 2)), $t = 1, $mo = 1, $j
+	Local $m = StringRegExp($s, "^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})$", 1)
+	If Not @error Then
+		$t = Int($m[0])
+		$mo = Int($m[1])
+		$j = Int($m[2])
+	Else
+		$m = StringRegExp($s, "^(\d{1,2})\.(\d{2}|\d{4})$", 1)
+		If Not @error Then
+			$mo = Int($m[0])
+			$j = Int($m[1])
+		Else
+			$m = StringRegExp($s, "^(\d{4})$", 1)
+			If @error Then Return ""
+			$j = Int($m[0])
+		EndIf
+	EndIf
+	If $j < 100 Then $j += ($j <= $jj + 1) ? 2000 : 1900
+	If $t < 1 Or $t > 31 Or $mo < 1 Or $mo > 12 Then Return ""
+	Return StringFormat("%04d%02d%02d", $j, $mo, $t)
+EndFunc
+
+; JJJJMMTT -> TT.MM.JJJJ
+Func DatumText($d)
+	Return StringMid($d, 7, 2) & "." & StringMid($d, 5, 2) & "." & StringLeft($d, 4)
+EndFunc
+
+; Texterkennung als dauernd laufender PowerShell-Prozess (der Start kostet 1-2 s, jede Seite danach nur einen
+; Bruchteil): liest je Zeile einen Bildpfad von der Standardeingabe, vergroessert das Bild dreifach und gibt
+; je erkannter Textzeile "x;y;Hoehe;Text" (erstes Wort, Pixel im Originalbild) aus, danach "ENDE"; Rueckgabe ""
+; oder Fehlertext
+Func OcrStarten()
+	OcrBeenden()
+	Local $ps = @TempDir & "\MOReiter-Texterkennung2.ps1"
+	Local $s = '$ErrorActionPreference = "Stop"' & @CRLF & _
+			'[Console]::OutputEncoding = [Text.Encoding]::UTF8' & @CRLF & _
+			'[Console]::InputEncoding = [Text.Encoding]::UTF8' & @CRLF & _
+			'Add-Type -AssemblyName System.Drawing' & @CRLF & _
+			'Add-Type -AssemblyName System.Runtime.WindowsRuntime' & @CRLF & _
+			'$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq ''AsTask'' -and ' & _
+			'$_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq ''IAsyncOperation`1'' })[0]' & @CRLF & _
+			'function Warte($op, [Type]$t) { $task = $asTask.MakeGenericMethod($t).Invoke($null, @($op)); $null = $task.Wait(-1); $task.Result }' & @CRLF & _
+			'$null = [Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime]' & @CRLF & _
+			'$null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]' & @CRLF & _
+			'$null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics, ContentType = WindowsRuntime]' & @CRLF & _
+			'$e = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()' & @CRLF & _
+			'if ($e -eq $null) { [Console]::Out.WriteLine(''FEHLER: keine Sprache fuer die Texterkennung installiert''); [Console]::Out.Flush(); exit 1 }' & @CRLF & _
+			'[Console]::Out.WriteLine(''BEREIT''); [Console]::Out.Flush()' & @CRLF & _
+			'while ($null -ne ($ein = [Console]::In.ReadLine())) {' & @CRLF & _
+			'  if ($ein -eq '''') { continue }' & @CRLF & _
+			'  try {' & @CRLF & _
+			'    $aus = $ein + ''.3.png''' & @CRLF & _
+			'    $b = [Drawing.Bitmap]::FromFile($ein)' & @CRLF & _
+			'    $g = New-Object Drawing.Bitmap -ArgumentList ($b.Width * 3), ($b.Height * 3)' & @CRLF & _
+			'    $gr = [Drawing.Graphics]::FromImage($g)' & @CRLF & _
+			'    $gr.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic' & @CRLF & _
+			'    $gr.DrawImage($b, 0, 0, $g.Width, $g.Height)' & @CRLF & _
+			'    $gr.Dispose(); $b.Dispose()' & @CRLF & _
+			'    $g.Save($aus, [Drawing.Imaging.ImageFormat]::Png); $g.Dispose()' & @CRLF & _
+			'    $f = Warte ([Windows.Storage.StorageFile]::GetFileFromPathAsync($aus)) ([Windows.Storage.StorageFile])' & @CRLF & _
+			'    $st = Warte ($f.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])' & @CRLF & _
+			'    $d = Warte ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($st)) ([Windows.Graphics.Imaging.BitmapDecoder])' & @CRLF & _
+			'    $bm = Warte ($d.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])' & @CRLF & _
+			'    $r = Warte ($e.RecognizeAsync($bm)) ([Windows.Media.Ocr.OcrResult])' & @CRLF & _
+			'    foreach ($l in $r.Lines) { $q = $l.Words[0].BoundingRect; ' & _
+			'[Console]::Out.WriteLine(([int]($q.X / 3)).ToString() + '';'' + ([int]($q.Y / 3)).ToString() + '';'' + ([int]($q.Height / 3)).ToString() + '';'' + $l.Text) }' & @CRLF & _
+			'    $bm.Dispose(); $st.Dispose()' & @CRLF & _
+			'  } catch { [Console]::Out.WriteLine(''FEHLER: '' + $_.Exception.Message) }' & @CRLF & _
+			'  [Console]::Out.WriteLine(''ENDE''); [Console]::Out.Flush()' & @CRLF & _
+			'}' & @CRLF
+	Local $fh = FileOpen($ps, 2 + 128)
+	If $fh = -1 Then Return "kann " & $ps & " nicht schreiben"
+	FileWrite($fh, $s)
+	FileClose($fh)
+	; 1 + 2 + 4 = $STDIN_CHILD + $STDOUT_CHILD + $STDERR_CHILD
+	$gOcrPid = Run('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' & $ps & '"', "", @SW_HIDE, 1 + 2 + 4)
+	If Not $gOcrPid Then Return "PowerShell nicht gestartet"
+	$gOcrPuffer = ""
+	Local $antwort = OcrAntwort("BEREIT", 20000)
+	If @error Then
+		OcrBeenden()
+		Return $antwort
+	EndIf
+	Return ""
+EndFunc
+
+; ein Bild erkennen lassen: Zeilen "x;y;Hoehe;Text", bei Fehler @error und der Grund
+Func OcrLesen($bild)
+	If Not $gOcrPid Or Not ProcessExists($gOcrPid) Then Return SetError(1, 0, "PowerShell l" & ChrW(228) & "uft nicht mehr")
+	StdinWrite($gOcrPid, StringToBinary($bild & @CRLF, 4))
+	Local $txt = OcrAntwort("ENDE", 15000)
+	If @error Then Return SetError(1, 0, $txt)
+	If StringLeft($txt, 7) = "FEHLER:" Then Return SetError(1, 0, StringTrimLeft($txt, 8))
+	Return $txt
+EndFunc
+
+; liest die Ausgabe der Texterkennung bis zur Zeile $marke; Rueckgabe der Text davor, bei Fehler @error
+Func OcrAntwort($marke, $ms)
+	Local $t = TimerInit()
+	While TimerDiff($t) < $ms
+		$gOcrPuffer &= BinaryToString(StdoutRead($gOcrPid, False, True), 4)
+		Local $muster = "(?s)^(.*?)(?:^|\r?\n)" & $marke & "\r?\n", $p = StringRegExp($gOcrPuffer, $muster, 1)
+		If Not @error Then
+			$gOcrPuffer = StringRegExpReplace($gOcrPuffer, $muster, "", 1)
+			Local $txt = StringStripWS($p[0], 3)
+			If StringLeft($txt, 7) = "FEHLER:" And $marke = "BEREIT" Then Return SetError(1, 0, StringTrimLeft($txt, 8))
+			Return $txt
+		EndIf
+		If StringInStr($gOcrPuffer, "FEHLER:") And $marke = "BEREIT" Then Return SetError(1, 0, StringStripWS($gOcrPuffer, 3))
+		If Not ProcessExists($gOcrPid) Then
+			Local $err = StringStripWS(BinaryToString(StderrRead($gOcrPid, False, True), 4) & " " & $gOcrPuffer, 3)
+			Return SetError(1, 0, "PowerShell beendet" & (($err = "") ? "" : ": " & StringLeft($err, 300)))
+		EndIf
+		Sleep(20)
+	WEnd
+	Return SetError(1, 0, "Texterkennung antwortet nicht")
+EndFunc
+
+Func OcrBeenden()
+	If $gOcrPid And ProcessExists($gOcrPid) Then
+		StdinWrite($gOcrPid)
+		ProcessWaitClose($gOcrPid, 2)
+		If ProcessExists($gOcrPid) Then ProcessClose($gOcrPid)
+	EndIf
+	$gOcrPid = 0
 EndFunc
 
 ; liest das Bildschirmrechteck $x1,$y1 - $x2,$y2 in den Speicher ($gBild, 32 Bit je Pixel, zeilenweise
