@@ -256,7 +256,7 @@ Global $gKarteiDatum = "", $gOcrPid = 0, $gOcrPuffer = ""
 ; Merken der Stelle statt Klick und deren Ergebnis
 Global $gKarteiTyp = "", $gTypArten = 0, $gNurSuchen = False, $gTrefferY = 0, $gTrefferDatum = ""
 ; Strg+Umsch+F: Richtung der letzten Suche (1 = abwaerts) und wann; Datenbank-Ergebnis der letzten zwei Minuten
-Global $gTypPatNr = 0, $gTypCacheNr = 0, $gTypUngenau = False, $gSucheLaeuft = False, $gSucheAbbruch = False, $gTypArt = "", $gVScroll = -1, $gTypLetztY = -999, $gTypRichtung = -1, $gTypZeit = 0, $gTypCache = 0, $gTypCacheSchluessel = "", $gTypCacheZeit = 0
+Global $gTypPatNr = 0, $gTypCacheNr = 0, $gSucheLaeuft = False, $gSucheAbbruch = False, $gTypArt = "", $gVScroll = -1, $gTypLetztY = -999, $gTypRichtung = -1, $gTypZeit = 0, $gTypCache = 0, $gTypCacheSchluessel = "", $gTypCacheZeit = 0
 ; Ablaufprotokoll der Smart Pix-Liste (Pfad, waehrend des Durchgangs; "" = keins)
 Global $gSpLog = "", $gSpNochmal = False, $gSpTabs = 0
 ; Geburtsdatum in der Smart Pix-Liste: Tag, Monat, Jahr (2- oder 4-stellig), getrennt durch Punkte (auch doppelt),
@@ -6388,7 +6388,6 @@ Func KarteiTyp()
 	Next
 	If $typ = "" Then Return False
 	$gTypArt = $art
-	$gTypUngenau = False
 	$gTypPatNr = 0
 	Local $merk = (($art = "") ? "" : $art & ":") & $typ
 	; derselbe Typ wie eben, da ging es (automatisch) nach unten, und die Markierung steht noch auf dem damals
@@ -6463,8 +6462,11 @@ Func KarteiTypSuchen($hWnd, $hGrid, $typ, $richtung, $fest)
 			If $db = 1 Then
 				If UBound($liste) = 0 Then Return "Keine Eintr" & ChrW(228) & "ge vom Typ " & $typ & " bei diesem Patienten (laut Datenbank)"
 				If $gAufrufProtokoll Then
-					Local $lt = ""
-					For $i = 0 To UBound($liste) - 1
+					; hoechstens die ersten und letzten 5
+					Local $lt = "", $nl = UBound($liste)
+					For $i = 0 To $nl - 1
+						If $nl > 10 And $i = 5 Then $lt &= "...; "
+						If $nl > 10 And $i >= 5 And $i < $nl - 5 Then ContinueLoop
 						$lt &= $liste[$i][0] & " " & $liste[$i][1] & (($liste[$i][2] = "") ? "" : " (angeordnet " & $liste[$i][2] & " " & $liste[$i][3] & ")") & "; "
 					Next
 					Protokoll("Strg+Umsch+F: " & UBound($liste) & " Eintr" & ChrW(228) & "ge vom Typ " & $typ & ": " & $lt)
@@ -6981,25 +6983,7 @@ Func TypEintraege($hWnd, $typ)
 	Local $nr = MOPatNr($nach, $vor, $geb)
 	If @error Then Return SetError(1, 0, "Patientennummer: " & $nr)
 	$gTypPatNr = Int($nr)
-	Local $arten = TypArtenFuer($typ), $bekannt = ($arten <> ""), $dbTyp = $typ
-	$gTypUngenau = False
-	; genau gesucht, aber so in der Datenbank unbekannt: das laengste bekannte Kuerzel, mit dem die Eingabe beginnt
-	; (falls Medical Office dem Kuerzel in der Typ-Spalte noch einen Zusatz anhaengt); am Bildschirm
-	; wird weiter der volle Typ verglichen
-	If Not $bekannt And $gTypArt = "" And IsObj($gTypArten) Then
-		Local $laengstes = ""
-		For $k In $gTypArten.Keys
-			If StringLen($k) >= 4 And StringLen($k) < StringLen($typ) And StringLeft($typ, StringLen($k)) = $k _
-					And StringLen($k) > StringLen($laengstes) Then $laengstes = $k
-		Next
-		If $laengstes <> "" Then
-			$dbTyp = $laengstes
-			$arten = TypArten($dbTyp)
-			$bekannt = True
-			$gTypUngenau = True
-			If $gAufrufProtokoll Then Protokoll("Strg+Umsch+F: " & $typ & " in der Datenbank unbekannt, nehme Kuerzel " & $dbTyp)
-		EndIf
-	EndIf
+	Local $arten = TypArtenFuer($typ), $bekannt = ($arten <> "")
 	Local $liste = ($arten = "") ? "0" : StringReplace(StringTrimLeft(StringTrimRight($arten, 1), 1), "|", ",")
 	Local $cn = DBVerbinden("medoff")
 	If @error Then Return SetError(1, 0, $cn)
@@ -7016,7 +7000,7 @@ Func TypEintraege($hWnd, $typ)
 		$cn.Close
 		Return SetError(1, 0, "Abfrage fehlgeschlagen: " & $fe)
 	EndIf
-	Local $l[0][4], $artGefunden = False
+	Local $l[0][4]
 	While Not $rs.EOF
 		Local $art = "", $ft = StringStripWS(String($rs.Fields(3).Value), 3), $ic = StringStripWS(String($rs.Fields(4).Value), 3)
 		; Kuerzel wie Dateilese (MODmpreihe) auf dem Server bestimmt ("Art"); ist es nur FICdcode unveraendert (eine
@@ -7042,11 +7026,8 @@ Func TypEintraege($hWnd, $typ)
 		EndIf
 		Local $passt = False
 		If $art <> "" Then
-			$passt = ($gTypUngenau ? (StringLower($art) = $dbTyp) : TypPasst(StringLower($art), $typ))
-			If $passt Then
-				$bekannt = True
-				$artGefunden = True
-			EndIf
+			$passt = TypPasst(StringLower($art), $typ)
+			If $passt Then $bekannt = True
 		Else
 			; Kuerzel der Eintragsart; FICdcode kann dabei eine Diagnose tragen (z.B. UEBLABOR: Z13.1 G)
 			$passt = StringInStr($arten, "|" & Int($rs.Fields(2).Value) & "|") > 0
@@ -7056,7 +7037,7 @@ Func TypEintraege($hWnd, $typ)
 			ReDim $l[$n + 1][4]
 			$l[$n][0] = String($rs.Fields(0).Value)
 			$l[$n][1] = StringFormat("%02d:%02d", Int($sek / 3600), Mod(Int($sek / 60), 60))
-			; Anordnungsdatum, falls anders (die Karteikarte zeigt bei manchen Eintraegen dieses)
+			; Anordnungsdatum, falls anders (nur Ausweichdatum, angezeigt wird das Eintragsdatum)
 			$l[$n][2] = String($rs.Fields(5).Value)
 			$l[$n][3] = StringFormat("%02d:%02d", Int($sek2 / 3600), Mod(Int($sek2 / 60), 60))
 			If $l[$n][2] = $l[$n][0] And $l[$n][3] = $l[$n][1] Then $l[$n][2] = ""
@@ -7162,8 +7143,7 @@ EndFunc
 ; ist und die Texterkennung die zweite Zeile nicht las ("edmpd" fuer "edmpdm2")? Nur, wo Tag und Uhrzeit laut
 ; Datenbank schon stimmen
 Func TypAnfang($s, $typ)
-	; nicht, wenn die Datenbank nur ein kuerzeres Kuerzel kannte (dann waeren auch andere Zusaetze dabei)
-	If $gTypArt <> "" Or $gTypUngenau Or StringLen($s) < 5 Or StringLen($typ) <= StringLen($s) Then Return False
+	If $gTypArt <> "" Or StringLen($s) < 5 Or StringLen($typ) <= StringLen($s) Then Return False
 	Return StringLeft($typ, StringLen($s)) = $s
 EndFunc
 
@@ -7176,7 +7156,7 @@ Func TypPasst($s, $typ)
 EndFunc
 
 Func TypArtMerken($kz, $nr)
-	; ohne Leerzeichen wie die Eingabe und die gelesene Spalte ("EDMPD M2" steht umbrochen als EDMPD / M2 da)
+	; ohne Leerzeichen, wie die Eingabe und die gelesene Spalte verglichen werden
 	$kz = StringLower(StringStripWS($kz, 8))
 	If $kz = "" Then Return
 	Local $alt = $gTypArten.Exists($kz) ? $gTypArten.Item($kz) : "|"
@@ -7628,7 +7608,7 @@ EndFunc
 
 ; Tagesuebersicht: Patient der markierten Zeile aus der Statuszeile unten links ("70090, Kunz, Nicole,
 ; 18.11.1984"). Die Statuszeile (TAdvOfficeStatusBar) malt ihren Text nur, daher: Bild davon, Texterkennung
-; von Windows (Windows.Media.Ocr ueber PowerShell), daraus Patientennummer und Geburtsdatum; Name und Vorname
+; von Windows (Windows.Media.Ocr, ueber OcrBereit/OcrLesen), daraus Patientennummer und Geburtsdatum; Name und Vorname
 ; dann aus der Datenbank, und nur wenn das Geburtsdatum dort zur Nummer passt (sonst waere eine falsch
 ; erkannte Ziffer ein anderer Patient). Rueckgabe "" oder Fehlertext
 Func TagesPatient(ByRef $nach, ByRef $vor, ByRef $geb)
@@ -7639,13 +7619,45 @@ Func TagesPatient(ByRef $nach, ByRef $vor, ByRef $geb)
 	If @error Or $p[2] < 10 Or $p[3] < 5 Then Return "Tagesuebersicht: Statuszeile nicht sichtbar"
 	HinweisStehend("Patient der markierten Zeile wird gelesen ...")
 	DirCreate(@AppDataDir & "\MOReiter")
-	Local $bild = @AppDataDir & "\MOReiter\Tagesstatus.png", $gross = @AppDataDir & "\MOReiter\Tagesstatus3.png"
+	Local $bild = @AppDataDir & "\MOReiter\Tagesstatus.png"
 	_ScreenCapture_Capture($bild, $p[0], $p[1], $p[0] + $p[2] - 1, $p[1] + $p[3] - 1, False)
-	Local $txt = TextErkennung($bild, $gross)
-	If @error Then
+	; dieselbe dauernd laufende Texterkennung wie Strg+Umsch+F/G (der Start entfaellt beim naechsten Mal)
+	Local $fehler = OcrBereit()
+	If $fehler <> "" Then
 		ToolTip("")
-		Return "Tagesuebersicht: Texterkennung fehlgeschlagen: " & $txt
+		Return "Tagesuebersicht: Texterkennung nicht gestartet: " & $fehler
 	EndIf
+	Local $woerter = OcrLesen($bild), $ocrFehler = @error
+	OcrSpaeterBeenden()
+	If $ocrFehler Then
+		ToolTip("")
+		Return "Tagesuebersicht: Texterkennung fehlgeschlagen: " & $woerter
+	EndIf
+	; Woerter ("x;y;Hoehe;Text") von links nach rechts zu einem Text (die Statuszeile ist eine Zeile)
+	Local $wl[0][2]
+	For $w In StringSplit(StringStripCR($woerter), @LF, 2)
+		Local $f = StringSplit($w, ";", 2)
+		If UBound($f) < 4 Then ContinueLoop
+		Local $n = UBound($wl)
+		ReDim $wl[$n + 1][2]
+		$wl[$n][0] = Int($f[0])
+		$wl[$n][1] = $f[3]
+	Next
+	For $i = 1 To UBound($wl) - 1
+		Local $x = $wl[$i][0], $t = $wl[$i][1], $k = $i - 1
+		While $k >= 0
+			If $wl[$k][0] <= $x Then ExitLoop
+			$wl[$k + 1][0] = $wl[$k][0]
+			$wl[$k + 1][1] = $wl[$k][1]
+			$k -= 1
+		WEnd
+		$wl[$k + 1][0] = $x
+		$wl[$k + 1][1] = $t
+	Next
+	Local $txt = ""
+	For $i = 0 To UBound($wl) - 1
+		$txt &= (($i = 0) ? "" : " ") & $wl[$i][1]
+	Next
 	If $gAufrufProtokoll Then Protokoll("Tagesuebersicht, Statuszeile erkannt: " & StringReplace($txt, @CRLF, " | "))
 	; erste Zahl, dann (ohne weitere Ziffern dazwischen, also ueber den Namen hinweg) das erste Datum
 	Local $m = StringRegExp($txt, "^\D{0,3}?(\d{1,8})\D*?(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})", 1)
@@ -7681,68 +7693,6 @@ Func TagesPatient(ByRef $nach, ByRef $vor, ByRef $geb)
 	If $geb <> $gebErk Then Return "Tagesuebersicht: Nr. " & $nr & " ist " & $vor & " " & $nach & " (" & $geb & _
 			"), erkannt wurde aber Geburtsdatum " & $gebErk & "; zur Sicherheit nichts gestartet"
 	Return ""
-EndFunc
-
-; Texterkennung von Windows (Windows.Media.Ocr, Windows 10/11, Sprache aus dem Benutzerprofil) fuer das Bild
-; $bild, vorher dreifach vergroessert nach $gross (kleine Schrift erkennt sie sonst schlecht); Rueckgabe die
-; erkannten Zeilen, bei Fehler @error und der Grund
-Func TextErkennung($bild, $gross)
-	Local $ps = @TempDir & "\MOReiter-Texterkennung.ps1"
-	Local $s = 'param([string]$ein, [string]$aus)' & @CRLF & _
-			'$ErrorActionPreference = "Stop"' & @CRLF & _
-			'[Console]::OutputEncoding = [Text.Encoding]::UTF8' & @CRLF & _
-			'Add-Type -AssemblyName System.Drawing' & @CRLF & _
-			'Add-Type -AssemblyName System.Runtime.WindowsRuntime' & @CRLF & _
-			'$b = [Drawing.Bitmap]::FromFile($ein)' & @CRLF & _
-			'$g = New-Object Drawing.Bitmap -ArgumentList ($b.Width * 3), ($b.Height * 3)' & @CRLF & _
-			'$gr = [Drawing.Graphics]::FromImage($g)' & @CRLF & _
-			'$gr.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic' & @CRLF & _
-			'$gr.DrawImage($b, 0, 0, $g.Width, $g.Height)' & @CRLF & _
-			'$gr.Dispose(); $b.Dispose()' & @CRLF & _
-			'$g.Save($aus, [Drawing.Imaging.ImageFormat]::Png); $g.Dispose()' & @CRLF & _
-			'$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq "AsTask" -and ' & _
-			'$_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq ''IAsyncOperation`1'' })[0]' & @CRLF & _
-			'function Warte($op, [Type]$t) { $task = $asTask.MakeGenericMethod($t).Invoke($null, @($op)); $null = $task.Wait(-1); $task.Result }' & @CRLF & _
-			'$null = [Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime]' & @CRLF & _
-			'$null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]' & @CRLF & _
-			'$null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics, ContentType = WindowsRuntime]' & @CRLF & _
-			'$f = Warte ([Windows.Storage.StorageFile]::GetFileFromPathAsync($aus)) ([Windows.Storage.StorageFile])' & @CRLF & _
-			'$st = Warte ($f.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])' & @CRLF & _
-			'$d = Warte ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($st)) ([Windows.Graphics.Imaging.BitmapDecoder])' & @CRLF & _
-			'$bm = Warte ($d.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])' & @CRLF & _
-			'$e = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()' & @CRLF & _
-			'if ($e -eq $null) { Write-Output "FEHLER: keine Sprache fuer die Texterkennung installiert"; exit 1 }' & @CRLF & _
-			'$r = Warte ($e.RecognizeAsync($bm)) ([Windows.Media.Ocr.OcrResult])' & @CRLF & _
-			'foreach ($l in $r.Lines) { Write-Output $l.Text }' & @CRLF & _
-			'$st.Dispose()' & @CRLF
-	; 2 = ueberschreiben, 128 = UTF-8 mit BOM
-	Local $fh = FileOpen($ps, 2 + 128)
-	If $fh = -1 Then Return SetError(1, 0, "kann " & $ps & " nicht schreiben")
-	FileWrite($fh, $s)
-	FileClose($fh)
-	; 2 + 4 = $STDOUT_CHILD + $STDERR_CHILD
-	Local $pid = Run('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' & $ps & '" "' & $bild & '" "' & $gross & '"', _
-			"", @SW_HIDE, 2 + 4)
-	If Not $pid Then Return SetError(1, 0, "PowerShell nicht gestartet")
-	Local $bin = Binary(""), $err = Binary(""), $t = TimerInit()
-	While TimerDiff($t) < 20000
-		$bin &= StdoutRead($pid, False, True)
-		Local $ende = @error
-		$err &= StderrRead($pid, False, True)
-		If $ende And Not ProcessExists($pid) Then ExitLoop
-		Sleep(30)
-	WEnd
-	If ProcessExists($pid) Then
-		ProcessClose($pid)
-		Return SetError(1, 0, "PowerShell antwortet nicht")
-	EndIf
-	Local $txt = StringStripWS(BinaryToString($bin, 4), 3)
-	If StringLeft($txt, 7) = "FEHLER:" Then Return SetError(1, 0, StringTrimLeft($txt, 8))
-	If $txt = "" Then
-		Local $fehler = StringStripWS(BinaryToString($err, 4), 3)
-		If $fehler <> "" Then Return SetError(1, 0, StringLeft($fehler, 300))
-	EndIf
-	Return $txt
 EndFunc
 
 ; Tagesuebersicht: in der Bereichsauswahl links den Eintrag ueber ($richtung = -1) bzw. unter (1) dem
