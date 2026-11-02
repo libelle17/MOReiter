@@ -134,8 +134,13 @@ TASTEN IN MEDICAL OFFICE UND IM PATIENTENLAUFZETTEL
 Was in Medical Office Strg+Buchstabe startet, startet im Patientenlaufzettel (Firefox) Alt+Buchstabe,
 die einzelnen Zuckerportale Alt+Umsch+Buchstabe: dann mit dem Patienten des Laufzettels, Medical
 Office braucht dafür nicht offen zu sein. Unterstrichene Buchstaben im Laufzettel zeigen die Taste.
-Laufzettel (Strg+P, Strg+Umsch+P), Arztbrief (Strg+A) und FreeCommander (Strg+I) gehen auch in der
-MO-Tagesübersicht, mit dem Patienten der markierten Zeile (wie in der Statuszeile unten links).
+Laufzettel (Strg+P, Strg+Umsch+P), Arztbrief (Strg+A), Einzelübertrag (Strg+Ü) und FreeCommander
+(Strg+I) gehen auch in der MO-Tagesübersicht, mit dem Patienten der markierten Zeile (wie in der
+Statuszeile unten links).
+Strg+Ü überträgt den Patienten einzeln von Medical Office (medoff) nach quelle (Dateilese vonmo, wie
+der Knopf "Übertr." der Patientenauswahl); MOReiter zeigt an der Maus, solange es läuft, danach
+2 s lang "erfolgreich" bzw. 5 s lang einen Fehler (Fehlermeldung während des Übertrags, Speichern
+fehlgeschlagen, Patient nicht gefunden, keine Verbindung zu Medical Office).
 
 {TASTENTABELLE}
 
@@ -168,6 +173,7 @@ PROGRAMMAUFRUFE (Zusatzfunktion, [Aufrufe] in der INI)
 Strg+Buchstabe bzw. Strg+Umsch+Buchstabe startet in jedem Fenster von Medical Office ein eigenes
 Programm mit Name, Vorname und Geburtsdatum des geöffneten Patienten, unabhängig von der
 Schalterleiste. Hat ein Eingabefeld den Fokus, behält die Taste ihre normale Bedeutung (z.B. Strg+A).
+Umlaute stehen im Schlüssel als Ae, Oe, Ue (z.B. Strg+Ue für Strg+Ü).
 Hier eingerichtet:
 {AUFRUFE}
 Statt einer Befehlszeile kann dort auch Portal:<Abschnitt> stehen (z.B. Strg+L=Portal:LibreView):

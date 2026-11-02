@@ -7,8 +7,9 @@ Tastatur an Stellen, wo es sonst nur die Maus gibt, zum Beispiel:
 - Krankenblattfilter (Filter-Reiter links oder unten): Strg+Alt+1, 2, 3 … bzw. Ziffernblock,
 - Diagnose-Kurzwahl: Strg+Alt+1, 2, 3 … bzw. Ziffernblock,
 - Termine des Patienten zeigen, solange Strg+Alt+T gehalten wird – aus jedem Programm,
-- Tagesübersicht: Strg+Alt+A hakt die markierte offene Aufgabe ab; Strg+P, Strg+Umsch+P, Strg+A und Strg+I
-  (Laufzettel, Arztbrief, FreeCommander) gehen dort mit dem Patienten der markierten Zeile,
+- Tagesübersicht: Strg+Alt+A hakt die markierte offene Aufgabe ab; Strg+P, Strg+Umsch+P, Strg+A, Strg+Ü und Strg+I
+  (Laufzettel, Arztbrief, Einzelübertrag, FreeCommander) gehen dort mit dem Patienten der markierten Zeile,
+- Einzelübertrag des Patienten von Medical Office nach quelle: Strg+Ü (Dateilese vonmo), mit Erfolgs- bzw. Fehlermeldung,
 - Karteikarte: Strg+Umsch+G blättert zu einem abgefragten Datum, Strg+Umsch+F springt zum vorigen (bzw.
   von oben aus zum nächsten) Eintrag eines abgefragten Typs (auch nur dessen Anfang oder ein Teil davon) (Spalte „Typ“, mit Blick in die Datenbank, ob es überhaupt einen gibt);
   beide lesen die Liste mit der Texterkennung von Windows,

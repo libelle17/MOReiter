@@ -41,6 +41,8 @@
 ;                              naechstaelteren Eintrag dieses Typs (Datenbank, Spalte "Typ" per Texterkennung)
 ;            Strg+P, Strg+Umsch+P, Strg+A, Strg+I (alle [Aufrufe] mit {pat}) auch in der Tagesuebersicht, mit
 ;                              dem Patienten der markierten Zeile (aus der Statuszeile unten links)
+;            Strg+Ue           ([Aufrufe] Strg+Ue=...Dateilese.exe vonmo {pat}) Einzeluebertrag des Patienten von
+;                              Medical Office (medoff) nach quelle; meldet, wenn Dateilese damit fertig ist
 ;            Strg+Alt+Umsch+A  in der Tagesuebersicht: Maus auf die Spalte "Bereich" halten und druecken
 ;            Alt+Pfeil hoch/runter  nur in der MO-Tagesuebersicht: in der Bereichsauswahl links den Eintrag
 ;                              ueber bzw. unter dem gelb umrandeten anklicken (vom obersten zum untersten
@@ -238,6 +240,9 @@ Global $gHilfeAlles = 0, $gHilfeSuchen = 0, $gHilfeWeiter = 0, $gHilfeHoch = 0, 
 		$gHilfeEnde = 0, $gHilfeZu = 0
 ; [Aufrufe]: externe Programme auf Strg[+Umsch]+Buchstabe in Medical Office, je Zeile Name, Taste (vk), Umsch, Befehl
 Global $gAufrufe[0][4]
+; Einzeluebertrag (Dateilese vonmo, Strg+Ue): laufender Prozess (Nummer und Handle fuer den Exit-Code), Patient und
+; Startzeit fuer die Fertig-Meldung
+Global $gUebertragPid = 0, $gUebertragHandle = 0, $gUebertragName = "", $gUebertragZeit = 0
 ; [Aufrufe] Protokoll=1: jede passende Taste mit Fokus und Entscheidung nach %APPDATA%\MOReiter\Aufrufe.log
 ; (im Hook nur gesammelt, geschrieben in der Hauptschleife)
 Global $gAufrufProtokoll = False, $gProtokoll = "", $gFokusInfo = ""
@@ -1454,7 +1459,8 @@ EndFunc
 ; Wert aus der eigenen INI, sonst aus den Praxis-Vorgaben, sonst $def; geschrieben (Kalibrieren) wird
 ; immer nur in die eigene INI, so dass ein neu verteiltes MOReiter-Vorgaben.ini sie nicht ueberschreibt
 ; [Aufrufe] aus der eigenen INI und MOReiter-Vorgaben.ini (die eigene geht vor) nach $gAufrufe; Schluessel
-; "Strg+P" bzw. "Strg+Umsch+P" (nur Buchstaben), Wert die Befehlszeile, {pat} wird zu "Nachname;Vorname;TT.MM.JJJJ"
+; "Strg+P" bzw. "Strg+Umsch+P" (Buchstaben, Umlaute als Ae, Oe, Ue, s. AufrufTaste), Wert die Befehlszeile, {pat}
+; wird zu "Nachname;Vorname;TT.MM.JJJJ"
 Func AufrufeLaden()
 	VorgabenPruefen()
 	; eine Taste gilt aus der ersten Datei, die sie nennt; ein leerer Wert schaltet sie dort ab
@@ -1464,14 +1470,13 @@ Func AufrufeLaden()
 		Local $a = IniReadSection($datei, "Aufrufe")
 		If @error Then ContinueLoop
 		For $i = 1 To $a[0][0]
-			Local $m = StringRegExp($a[$i][0], "(?i)^Strg\+(Umsch\+)?([A-Z])$", 1)
-			If @error Then ContinueLoop
-			Local $vk = Asc(StringUpper($m[1])), $umsch = ($m[0] <> "")
+			Local $vk, $umsch, $tname
+			If Not AufrufTaste($a[$i][0], $vk, $umsch, $tname) Then ContinueLoop
 			If StringInStr($gesehen, "|" & $vk & ($umsch ? "U" : "") & "|") Then ContinueLoop
 			$gesehen &= $vk & ($umsch ? "U" : "") & "|"
 			If StringStripWS($a[$i][1], 3) = "" Then ContinueLoop
 			ReDim $gAufrufe[$n + 1][4]
-			$gAufrufe[$n][0] = ($umsch ? "Strg+Umsch+" : "Strg+") & StringUpper($m[1])
+			$gAufrufe[$n][0] = $tname
 			$gAufrufe[$n][1] = $vk
 			$gAufrufe[$n][2] = $umsch
 			$gAufrufe[$n][3] = StringStripWS($a[$i][1], 3)
@@ -1482,6 +1487,29 @@ Func AufrufeLaden()
 	$gAltGrAbstand = Int(Einst("Allgemein", "AltGrAbstand", "50"))
 	$gTastenProtokoll = (Einst("Allgemein", "TastenProtokoll", "0") = "1")
 	If $gAufrufProtokoll Then Protokoll("MOReiter gestartet (" & @ScriptFullPath & ", Stand " & Stand() & "), " & $n & " Aufrufe eingerichtet")
+EndFunc
+
+; Schluessel aus [Aufrufe] wie "Strg+P", "Strg+Umsch+P" oder "Strg+Ue" (die INI-Dateien sind ASCII, Umlaute
+; deshalb als Ae, Oe, Ue; die Umlaute selbst aus einer ANSI-Datei gehen auch): virtueller Tastencode nach dem
+; Tastaturlayout (Ue ist auf der deutschen Tastatur VK_OEM_1), Umschalt und Anzeigename (mit dem Umlaut);
+; False bei anderen Schluesseln
+Func AufrufTaste($k, ByRef $vk, ByRef $umsch, ByRef $name)
+	Local $m = StringRegExp($k, "(?i)^Strg\+(Umsch\+)?([A-Z]|Ae|Oe|Ue|" & ChrW(196) & "|" & ChrW(214) & "|" & ChrW(220) & ")$", 1)
+	If @error Then Return False
+	$umsch = ($m[0] <> "")
+	Local $b = StringUpper($m[1])
+	If StringLen($b) = 1 And AscW($b) < 128 Then
+		$vk = Asc($b)
+	Else
+		If $b = "AE" Then $b = ChrW(196)
+		If $b = "OE" Then $b = ChrW(214)
+		If $b = "UE" Then $b = ChrW(220)
+		Local $r = DllCall("user32.dll", "short", "VkKeyScanW", "word", AscW(StringLower($b)))
+		If @error Or $r[0] = -1 Then Return False
+		$vk = BitAND($r[0], 0xFF)
+	EndIf
+	$name = ($umsch ? "Strg+Umsch+" : "Strg+") & $b
+	Return True
 EndFunc
 
 ; fehlt MOReiter-Vorgaben.ini neben der exe (geloescht, nur die exe weitergegeben), die beim Kompilieren eingebettete
@@ -1549,10 +1577,10 @@ Func AufrufBefehl($name, $befehl)
 	If $befehl = "SmartPix" Then Return SmartPix()
 	If $befehl = "SmartPixListe" Then Return SmartPixListe()
 	If $befehl = "Skripte" Then Return SkripteEinrichten()
+	Local $nach = "", $vor = "", $geb = ""
 	If StringInStr($befehl, "{pat}") Then
 		; F6 (falls die Personalien fehlen) darf nicht als Strg+F6 ankommen
 		If Not ModifierLos() Then Return Meldung("Strg bitte loslassen")
-		Local $nach, $vor, $geb
 		If Not $gLink And TagesAktiv() Then
 			Local $tfehler = TagesPatient($nach, $vor, $geb)
 			If $tfehler <> "" Then Return Meldung($tfehler)
@@ -1564,7 +1592,51 @@ Func AufrufBefehl($name, $befehl)
 	Local $pid = Run($befehl), $fehler = @error
 	If $gAufrufProtokoll Then Protokoll($name & ": " & $befehl & ($fehler ? " -> nicht gestartet" : " -> gestartet, Prozess " & $pid))
 	If $fehler Then Return Meldung($name & ": Programm nicht gefunden: " & $befehl)
+	; Einzeluebertrag (Strg+Ue): melden, solange Dateilese laeuft und wann es fertig ist
+	If StringRegExp($befehl, "(?i)dateilese\.exe""?\s+vonmo\b") Then
+		If $gUebertragHandle Then DllCall("kernel32.dll", "bool", "CloseHandle", "handle", $gUebertragHandle)
+		$gUebertragPid = $pid
+		; 0x1000 = PROCESS_QUERY_LIMITED_INFORMATION, reicht fuer GetExitCodeProcess
+		Local $h = DllCall("kernel32.dll", "handle", "OpenProcess", "dword", 0x1000, "bool", False, "dword", $pid)
+		$gUebertragHandle = @error ? 0 : $h[0]
+		$gUebertragName = StringStripWS($vor & " " & $nach, 3)
+		$gUebertragZeit = TimerInit()
+		HinweisStehend(ChrW(220) & "bertrag" & ($gUebertragName = "" ? "" : " von " & $gUebertragName) & " aus Medical Office nach quelle l" & ChrW(228) & "uft ...")
+		AdlibRegister("UebertragPruefen", 500)
+	EndIf
 	Return True
+EndFunc
+
+; wartet auf das Ende von Dateilese beim Einzeluebertrag (Strg+Ue) und meldet es mit dessen Ergebnis (Exit-Code, s.
+; doPatvonMO in Dateilese: 1 uebertragen, 4 mit aufgefangenem Fehler, 2 Fehler beim Speichern, 3 nicht in Medical Office,
+; 5 keine Verbindung; 0 = ohne Ergebnis, z.B. Patient nicht gefunden oder aelteres Dateilese); nach 30 min nicht mehr
+Func UebertragPruefen()
+	If ProcessExists($gUebertragPid) And TimerDiff($gUebertragZeit) < 1800000 Then Return
+	AdlibUnRegister("UebertragPruefen")
+	Local $code = -1
+	If $gUebertragHandle Then
+		Local $r = DllCall("kernel32.dll", "bool", "GetExitCodeProcess", "handle", $gUebertragHandle, "dword*", 0)
+		If Not @error And $r[0] Then $code = $r[2]
+		DllCall("kernel32.dll", "bool", "CloseHandle", "handle", $gUebertragHandle)
+		$gUebertragHandle = 0
+	EndIf
+	; 259 = STILL_ACTIVE: nach 30 min noch nicht fertig
+	If $code = 259 Or ProcessExists($gUebertragPid) Then Return
+	Local $wer = ChrW(220) & "bertrag" & ($gUebertragName = "" ? "" : " von " & $gUebertragName), $s = " (" & Round(TimerDiff($gUebertragZeit) / 1000) & " s)"
+	Switch $code
+		Case 1
+			Hinweis($wer & " nach quelle erfolgreich" & $s, 2000)
+		Case 4
+			Hinweis($wer & " nach quelle beendet, aber mit Fehlermeldung" & $s, 5000)
+		Case 2
+			Hinweis($wer & ": Fehler beim Speichern in quelle" & $s, 5000)
+		Case 3
+			Hinweis($wer & ": Patient in Medical Office nicht gefunden", 5000)
+		Case 5
+			Hinweis($wer & ": keine Verbindung zur Datenbank von Medical Office", 5000)
+		Case Else
+			Hinweis($wer & " aus Medical Office nach quelle beendet" & $s)
+	EndSwitch
 EndFunc
 
 ; Strg+Z ([Aufrufe] Strg+Z=Zucker): Markierungen des geoeffneten Patienten aus der Datenbank von Medical Office
@@ -4183,6 +4255,7 @@ Func AufrufBeschreibung($b)
 	If StringRegExp($b, "(?i)dateilese\.exe""?\s+plz\b") Then Return "Patientenlaufzettel " & ChrW(246) & "ffnen (ggf. erstellen)"
 	If StringRegExp($b, "(?i)dateilese\.exe""?\s+nplz\b") Then Return "Patientenlaufzettel neu erstellen"
 	If StringRegExp($b, "(?i)dateilese\.exe""?\s+ab\b") Then Return "Arztbrief erstellen"
+	If StringRegExp($b, "(?i)dateilese\.exe""?\s+vonmo\b") Then Return "Einzel" & ChrW(252) & "bertrag von Medical Office nach quelle"
 	If StringRegExp($b, "(?i)fcaufruf\.exe") Then Return "FreeCommander mit p: und dem Patientenordner"
 	Return $b
 EndFunc
@@ -4243,7 +4316,7 @@ EndFunc
 ; welche praxiseigenen Werte gelten, und schreibt beides in MOReiter-Praxis.ini neben der exe (die Vorgaben aus dem
 ; Repo bleiben unveraendert, so dass ein Update sie ersetzen kann). Abgeschaltet wird mit leeren Werten: Labor
 ; ([Labor] Url=, Strg+O), Zuckerportale (Url= der Portale, Strg+L/D/G/Y/E/Z), Smart Pix (Strg+S, Strg+Umsch+S),
-; Patientenlaufzettel (Dateilese und FCAufruf: Strg+P, Strg+Umsch+P, Strg+A, Strg+I); Strg+Umsch+T bleibt, solange
+; Patientenlaufzettel (Dateilese und FCAufruf: Strg+P, Strg+Umsch+P, Strg+A, Strg+Ue, Strg+I); Strg+Umsch+T bleibt, solange
 ; es ein Portal gibt. Reihenfolge nach Verbreitung; was von einem Kaestchen abhaengt, ist grau, solange es aus ist
 Func PraxisEinrichten()
 	; ohne Vorgaben gibt es keine Programmaufrufe und Portal-Adressen, die sich einschalten liessen (AufrufeLaden legt
@@ -4287,7 +4360,7 @@ Func PraxisEinrichten()
 				20, $y, Einst("Dexcom", "SpeichernAuf", ""))
 	Next
 	$k.Item("SmartPix") = PraxisKaestchen("Accu-Chek Smart Pix (Strg+S Patient w" & ChrW(228) & "hlen, Strg+Umsch+S Patientenliste abgleichen)", 0, $y, $an.Item("SmartPix"))
-	$k.Item("Laufzettel") = PraxisKaestchen("Patientenlaufzettel, Arztbrief usw. aus Dateilese.exe, FreeCommander " & ChrW(252) & "ber FCAufruf.exe (Strg+P, A, I)", 0, $y, $an.Item("Laufzettel"))
+	$k.Item("Laufzettel") = PraxisKaestchen("Patientenlaufzettel, Arztbrief usw. aus Dateilese.exe, FreeCommander " & ChrW(252) & "ber FCAufruf.exe (Strg+P, A, " & ChrW(220) & ", I)", 0, $y, $an.Item("Laufzettel"))
 	; Krankenblattfilter: Anwenderansicht (Reiter) und Lage der Filter-Registrierkarten-Reiter
 	GUICtrlCreateLabel("Krankenblattfilter (Strg+Alt+^ 1 2 ...): Anwenderansicht Nr. (von links)", 15, $y + 3, 475, 22)
 	Local $filterAnsicht = GUICtrlCreateCombo("", 495, $y, 140, 200, $CBS_DROPDOWNLIST)
@@ -4428,7 +4501,8 @@ EndFunc
 Func PraxisGruppe($sektion, $k, $w)
 	If $sektion = "Labor" And $k = "Url" Then Return "Labor"
 	If StringRegExp($sektion, "(?i)^(LibreView|Dexcom|Glooko|YourLoops|EasyView)$") And $k = "Url" Then Return "Zucker"
-	If $sektion <> "Aufrufe" Or Not StringRegExp($k, "(?i)^Strg\+(Umsch\+)?[A-Z]$") Then Return ""
+	Local $vk, $umsch, $tname
+	If $sektion <> "Aufrufe" Or Not AufrufTaste($k, $vk, $umsch, $tname) Then Return ""
 	$w = StringStripWS($w, 3)
 	If $w = "Portal:Labor" Then Return "Labor"
 	If $w = "Zucker" Or StringLeft($w, 7) = "Portal:" Then Return "Zucker"
@@ -8729,9 +8803,9 @@ EndFunc
 
 ; ToolTip an der Maus, weil TrayTip unter Windows 10/11 eine Benachrichtigung ist,
 ; die bei abgeschalteten Benachrichtigungen oder "Nicht stoeren" gar nicht erscheint
-Func Hinweis($txt)
+Func Hinweis($txt, $ms = 3000)
 	ToolTip($txt, Default, Default, "MOReiter")
-	AdlibRegister("HinweisWeg", 3000)
+	AdlibRegister("HinweisWeg", $ms)
 EndFunc
 
 ; wie Hinweis, bleibt aber stehen, bis ToolTip("") oder der naechste Hinweis ihn ersetzt
