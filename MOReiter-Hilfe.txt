@@ -108,6 +108,17 @@ Esc        Abbrechen
 Strg+Alt darf zwischen zwei Tasten gehalten bleiben, z.B. für E und dann V.
 
 
+EDITOR (z.B. "Autotext - ABSTR" aus dem Datenpflegesystem, Fensterklasse TDocumentForm)
+----------------------------------------------------------------------------------------------------
+F2         Ctrl+S (Speichern und Schließen); ist der Editor danach noch offen, weil nichts geändert
+           wurde, wird er wie mit Alt+F4 geschlossen (nicht, wenn eine Rückfrage vorn steht)
+Strg+Umsch+S  Speichern unter ...
+Alt+D      Datei-Menü öffnen
+Strg+Alt halten zeigt diese drei Tasten links oben an.
+Landet Alt+Tab auf dem (gesperrten, unsichtbar darunterliegenden) Fenster, dem der Editor gehört, z.B.
+"MO-Datenpflegesystem", holt MOReiter den Editor nach vorn; sonst nähme er scheinbar keine Tasten an.
+
+
 KALIBRIEREN (nur nötig, wenn ein Klick daneben geht)
 ----------------------------------------------------------------------------------------------------
 Strg+Alt+Umsch+L / K / P / A
@@ -383,6 +394,7 @@ gilt der eingebaute Wert. Alle drei haben denselben Aufbau; Kalibrieren schreibt
 [Tagesuebersicht]  BereichX, NameX, Warten, BereichWarten, BereichRahmen
 [Briefversand]     EmpfaengerX, EmpfaengerY; Betreff, Empfaenger, Vorschau = Control in AutoIt-
                    Schreibweise, falls die automatische Suche danebenliegt
+[Editor]           Warten=350   ms nach Ctrl+S, bis ein noch offener Editor geschlossen wird
 
 
 Hinweis: AutoIt-Skript, Quelltext MOReiter.au3 (https://github.com/libelle17/MOReiter, GPL-3.0); kompilieren

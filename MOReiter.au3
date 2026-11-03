@@ -95,6 +95,12 @@
 ;                              (geklickt wird mit der echten Maus, Strg+Alt darf dabei gehalten bleiben,
 ;                              z.B. fuer E und dann V);
 ;                              beim Halten von Strg+Alt erscheinen die Buchstaben gelb an den Klickstellen
+;            F2 allein im Editor von Medical Office (Fenster der Klasse TDocumentForm, z.B. "Autotext - ABSTR" aus dem
+;                              Datenpflegesystem): Strg+S (Speichern und Schliessen) und, wenn der Editor danach noch
+;                              offen ist (nichts geaendert), schliessen wie Alt+F4; F2 speichert dort nicht immer;
+;                              Strg+Umsch+S Speichern unter, Alt+D Datei-Menue; Strg+Alt halten zeigt die drei an;
+;                              landet Alt+Tab auf dem gesperrten Fenster darunter, dem der Editor gehoert, holt
+;                              MOReiter den Editor nach vorn (sonst nahm er scheinbar keine Tasten mehr an)
 ;            Strg+Alt+Umsch+D  Liste der Controls im aktiven Fenster (Klasse, Nummer, Text, Lage) in die
 ;                              Zwischenablage und nach %APPDATA%\MOReiter\Fenster.txt, zum Einrichten neuer Tasten
 ;            Beenden ueber das Tray-Menue (kein Strg+Alt+Q, das waere AltGr+Q = @)
@@ -166,6 +172,11 @@ Const $RandSpalteX = 10, $KopfHoehe = 22, $ZeilenHoehe = 20, $OffenFarbe = 0x7AB
 ; Briefversand: Titel des Fensters; Betreff, Empfaengerliste und Vorschau werden nach der Klasse
 ; vermutet, falls in [Briefversand] kein Control angegeben ist; erste Empfaengerzeile relativ zur Liste
 Const $BriefTitel = "MEDICAL OFFICE - Briefversand"
+; Editor von Medical Office (Autotext, ...): Fensterklasse; ms nach Strg+S ("Speichern und Schliessen"), bis der
+; noch offene Editor geschlossen wird ([Editor] Warten=)
+Const $EditorKlasse = "TDocumentForm", $defEditorWarten = 350
+; zuletzt gesehenes Vordergrundfenster (EditorNachVorn prueft nur bei einem Wechsel)
+Global $gVornZuletzt = 0
 Const $defEmpfaengerX = 150, $defEmpfaengerY = 33
 Const $defBereichRahmen = 0x8F8F1E, $BereichRand = 0xC1C6CF, $defBereichWarten = 1500
 ; Krankenblatt-Liste (gemessen 28.9.26): Hintergrund der markierten Zeile, Kopfzeilenhoehe, Hoehe des
@@ -361,6 +372,7 @@ While 1
 	NummerPruefen()
 	EinblendungPruefen()
 	If $gHilfe Then HilfePruefen()
+	EditorNachVorn()
 	If $gProtokoll <> "" Then ProtokollSchreiben()
 	If UBound($gAblagen) And TimerDiff($gAblagenGeprueft) > 2000 Then AblagenPruefen()
 	; Windows entfernt einen Hook stillschweigend, wenn er einmal zu langsam antwortet (z.B. bei hoher
@@ -495,6 +507,11 @@ Func HookAufgabe($vk)
 	; Esc allein im Briefversand: Abbrechen
 	If $vk = 0x1B And Not (Gedrueckt(0x10) Or Gedrueckt(0x11) Or Gedrueckt(0x12) Or Gedrueckt(0x5B) Or Gedrueckt(0x5C)) _
 			And BriefAktiv() Then Return "Brief:Abbrechen"
+	; im Editor: F2 allein speichern und schliessen, Strg+Umsch+S speichern unter, Alt+D Datei-Menue
+	If $vk = 0x71 And Not (Gedrueckt(0x10) Or Gedrueckt(0x11) Or Gedrueckt(0x12) Or Gedrueckt(0x5B) Or Gedrueckt(0x5C)) _
+			And EditorAktiv() Then Return "Editor:Speichern"
+	If $vk = 0x53 And StrgAllein() And Gedrueckt(0x10) And EditorAktiv() Then Return "Editor:SpeichernUnter"
+	If $vk = 0x44 And AltAllein() And Not Gedrueckt(0x10) And EditorAktiv() Then Return "Editor:Datei"
 	; Strg[+Umsch]+Buchstabe aus [Aufrufe], nur in Medical Office und nicht in einem Eingabefeld
 	If UBound($gAufrufe) > 0 And StrgAllein() Then
 		For $i = 0 To UBound($gAufrufe) - 1
@@ -723,6 +740,8 @@ Func EinblendungZeigen()
 			$pos[$i][2] = NummerText($i)
 			$pos[$i][3] = -1
 		Next
+	ElseIf EditorAktiv() Then
+		EditorPositionen($hWnd, $pos)
 	ElseIf TagesAktiv() Then
 		TagesPositionen($hWnd, $pos)
 	ElseIf MOAktiv() Then
@@ -929,7 +948,104 @@ Func Ausfuehren($aufgabe)
 			DiagnoseWahl(Int($teil[1]))
 		Case "Brief"
 			BriefKlick($teil[1])
+		Case "Editor"
+			Return EditorTaste($teil[1])
 	EndSwitch
+EndFunc
+
+; ist der Editor von Medical Office das aktive Fenster? (im Hook, muss schnell sein)
+Func EditorAktiv()
+	Return _WinAPI_GetClassName(_WinAPI_GetForegroundWindow()) = $EditorKlasse
+EndFunc
+
+; Tasten im Editor ($was: Speichern, SpeichernUnter, Datei)
+; F2 = Speichern: Strg+S ("Speichern und Schliessen"); ist das grau, weil nichts geaendert wurde, bleibt der Editor
+; offen und wird dann wie mit Alt+F4 geschlossen, aber nur, wenn er noch vorn und bedienbar ist (sonst steht z.B.
+; eine Rueckfrage nach dem Speichern vorn, die nicht weggeklickt werden darf)
+; Alt+D = Datei: Knopf "Datei" anklicken (per Nachricht, die Maus bleibt, wo sie ist; das Menue ist ein
+; gewoehnliches Windows-Menue); Strg+Umsch+S = SpeichernUnter: ebenso und dann "i" (Spe_i_chern unter ...).
+; Beides erst, wenn die gehaltenen Tasten los sind: ein spaet losgelassenes Alt schloesse das Menue wieder,
+; ein gehaltenes Strg machte aus dem "i" Strg+I
+Func EditorTaste($was)
+	Local $hWnd = _WinAPI_GetForegroundWindow()
+	If _WinAPI_GetClassName($hWnd) <> $EditorKlasse Then Return False
+	If $was <> "Speichern" Then
+		; Alt allein losgelassen sprange sonst in die Menueleiste
+		AltMaskieren()
+		Local $t0 = TimerInit()
+		While ($gGehaltenMod[0] Or $gGehaltenMod[1] Or $gGehaltenMod[2] Or Gedrueckt(0x10)) And TimerDiff($t0) < 3000
+			Sleep(20)
+		WEnd
+		If _WinAPI_GetForegroundWindow() <> $hWnd Then Return False
+		Local $h = ControlGetHandle($hWnd, "", "[CLASS:TAdvShapeButton; TEXT:Datei]")
+		If @error Then Return Meldung("Knopf ""Datei"" im Editor nicht gefunden")
+		ControlClick($hWnd, "", $h)
+		If $was = "Datei" Then Return True
+		Local $m = 0
+		$t0 = TimerInit()
+		While Not $m And TimerDiff($t0) < 1500
+			Sleep(20)
+			Local $l = WinList("[CLASS:#32768]")
+			For $i = 1 To $l[0][0]
+				If BitAND(WinGetState($l[$i][1]), 2) Then $m = $l[$i][1]
+			Next
+		WEnd
+		If Not $m Then Return Meldung("Datei-Menue des Editors ging nicht auf")
+		TasteEinspeisen(0x49, False)
+		Return True
+	EndIf
+	TasteEinspeisen(0x53, False, True)
+	Local $t = TimerInit(), $ms = Int(Einst("Editor", "Warten", $defEditorWarten))
+	While WinExists($hWnd) And TimerDiff($t) < $ms
+		Sleep(50)
+	WEnd
+	If Not WinExists($hWnd) Then Return True
+	If _WinAPI_GetForegroundWindow() <> $hWnd Or Not BitAND(WinGetState($hWnd), 4) Then Return True
+	WinClose($hWnd)
+	Return True
+EndFunc
+
+; Alt+Tab (oder das Schliessen eines anderen Fensters) aktiviert statt des Editors manchmal das Fenster, dem er
+; gehoert (z.B. "MO-Datenpflegesystem"); das liegt maximiert unsichtbar darunter und ist gesperrt, solange der
+; Editor offen ist, alle Tasten verpufften dort. Dann den Editor nach vorn holen (je Wechsel einmal) und, hat danach
+; kein Control den Fokus (kein Textcursor, Getipptes ginge verloren), den Fokus ins Textfeld setzen
+Func EditorNachVorn()
+	Local $v = _WinAPI_GetForegroundWindow()
+	If $v = $gVornZuletzt Then Return
+	$gVornZuletzt = $v
+	If Not $v Or _WinAPI_GetClassName($v) <> "OWL_Window" Or BitAND(WinGetState($v), 4) Then Return
+	Local $l = WinList("[CLASS:" & $EditorKlasse & "]")
+	For $i = 1 To $l[0][0]
+		If _WinAPI_GetWindow($l[$i][1], 4) = $v And BitAND(WinGetState($l[$i][1]), 6) = 6 Then
+			Local $h = $l[$i][1]
+			WinActivate($h)
+			If Not WinWaitActive($h, "", 1) Then Return
+			Local $t = TimerInit()
+			While TimerDiff($t) < 500
+				If ControlGetFocus($h) <> "" Then Return
+				Sleep(50)
+			WEnd
+			ControlFocus($h, "", "[CLASS:TWPRichText; INSTANCE:1]")
+			Return
+		EndIf
+	Next
+EndFunc
+
+; Schildchen fuer die Einblendung im Editor: die drei Tasten untereinander, linksbuendig ab dem Knopf "Datei"
+Func EditorPositionen($hWnd, ByRef $pos)
+	Local $h = ControlGetHandle($hWnd, "", "[CLASS:TAdvShapeButton; TEXT:Datei]")
+	If @error Then Return
+	Local $p = WinGetPos($h), $f = WinGetPos($hWnd)
+	If @error Then Return
+	Local $x = ($p[0] > $f[0] + 8 ? $p[0] : $f[0] + 8) + 2, $y = $p[1] + Int($p[3] / 2)
+	Local $t[3] = ["Alt+D Datei", "F2 Speichern und Schlie" & ChrW(223) & "en", "Strg+Umsch+S Speichern unter"]
+	ReDim $pos[3][4]
+	For $i = 0 To 2
+		$pos[$i][0] = $x
+		$pos[$i][1] = $y + 20 * $i
+		$pos[$i][2] = $t[$i]
+		$pos[$i][3] = -1
+	Next
 EndFunc
 
 ; ist der Briefversand das aktive Fenster? (im Hook, muss schnell sein)
@@ -6147,12 +6263,14 @@ Func Termine()
 EndFunc
 
 ; schickt die Taste $vk (mit Alt) als eigene, vom Hook durchgelassene Eingabe
-Func TasteEinspeisen($vk, $mitAlt)
+Func TasteEinspeisen($vk, $mitAlt, $mitStrg = False)
 	; 2 = KEYEVENTF_KEYUP
+	If $mitStrg Then DllCall("user32.dll", "none", "keybd_event", "byte", 0xA2, "byte", 0, "dword", 0, "ulong_ptr", $Kennung)
 	If $mitAlt Then DllCall("user32.dll", "none", "keybd_event", "byte", 0xA4, "byte", 0, "dword", 0, "ulong_ptr", $Kennung)
 	DllCall("user32.dll", "none", "keybd_event", "byte", $vk, "byte", 0, "dword", 0, "ulong_ptr", $Kennung)
 	DllCall("user32.dll", "none", "keybd_event", "byte", $vk, "byte", 0, "dword", 2, "ulong_ptr", $Kennung)
 	If $mitAlt Then DllCall("user32.dll", "none", "keybd_event", "byte", 0xA4, "byte", 0, "dword", 2, "ulong_ptr", $Kennung)
+	If $mitStrg Then DllCall("user32.dll", "none", "keybd_event", "byte", 0xA2, "byte", 0, "dword", 2, "ulong_ptr", $Kennung)
 EndFunc
 
 ; Strg+Alt+U: die Liste im Container Karteikarte aktivieren, damit Pfeiltasten usw. dort wirken;
