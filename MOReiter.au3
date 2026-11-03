@@ -101,6 +101,14 @@
 ;                              Strg+Umsch+S Speichern unter, Alt+D Datei-Menue; Strg+Alt halten zeigt die drei an;
 ;                              landet Alt+Tab auf dem gesperrten Fenster darunter, dem der Editor gehoert, holt
 ;                              MOReiter den Editor nach vorn (sonst nahm er scheinbar keine Tasten mehr an)
+;            Strg+Alt+M, dann P bzw. K  in Medical Office: Metformin-Steigerungsplan fuer den aktuellen Patienten
+;                              (fragt zuerst den Therapiebeginn ab, Vorgabe heute, Enter/Esc;
+;                              Filter Medplan, juengsten Dosierplan wiederholen bzw. neuen anlegen, viermal
+;                              Metformin 1000 mg N3 eintragen: abends 0,5 / 1 / morgens 0,5 abends 1 / 1-0-1, je
+;                              eine Woche, mit "(nach dem Essen)"; P: Privatrezept, nicht nur rabattierte, Grund
+;                              "Stoffwechsel"; K: Kassenrezept, nur rabattierte, Grund "Zucker"; Zeilen 2-4 als
+;                              Fremdverordnung; zuletzt F2), Esc bricht ab
+;            Alt+W             im Medikamentenkatalog: Klappliste "Alle Wirkstaerken" aufklappen
 ;            Strg+Alt+Umsch+D  Liste der Controls im aktiven Fenster (Klasse, Nummer, Text, Lage) in die
 ;                              Zwischenablage und nach %APPDATA%\MOReiter\Fenster.txt, zum Einrichten neuer Tasten
 ;            Beenden ueber das Tray-Menue (kein Strg+Alt+Q, das waere AltGr+Q = @)
@@ -119,6 +127,8 @@
 #include <ButtonConstants.au3>
 #include <ComboConstants.au3>
 #include <GuiRichEdit.au3>
+#include <GuiDateTimePicker.au3>
+#include <DateTimeConstants.au3>
 Opt("MustDeclareVars", 1)
 Opt("WinTitleMatchMode", 4)
 ; keine 250 ms Pause nach jedem Fensterbefehl; wo ein Fenster Zeit braucht, wird ausdruecklich gewartet
@@ -175,6 +185,13 @@ Const $BriefTitel = "MEDICAL OFFICE - Briefversand"
 ; Editor von Medical Office (Autotext, ...): Fensterklasse; ms nach Strg+S ("Speichern und Schliessen"), bis der
 ; noch offene Editor geschlossen wird ([Editor] Warten=)
 Const $EditorKlasse = "TDocumentForm", $defEditorWarten = 350
+; Metforminplan: Fensterklassen von Medikamentenkatalog, Dosierplan und "Medikament verordnen"; wie lange nach
+; Strg+Alt+M auf P bzw. K gewartet wird; Beginn dieses Wartens (0 = keins) und ob dessen Hinweis steht
+Const $KatalogKlasse = "TAMISForm", $PlanKlasse = "TDosierplanForm", $VerordnenKlasse = "TfrmMedVerordnung"
+Const $MetWartenMs = 5000, $defMetFilter = 3, $defMetWarten = 1000, $defMetSuchWarten = 5000
+Global $gMetWarten = 0, $gMetAnzeige = False
+; Therapiebeginn (JJJJ/MM/TT), aus dem Fenster "Therapiebeginn" (MetBeginn)
+Global $gMetBeginn = ""
 ; zuletzt gesehenes Vordergrundfenster (EditorNachVorn prueft nur bei einem Wechsel)
 Global $gVornZuletzt = 0
 Const $defEmpfaengerX = 150, $defEmpfaengerY = 33
@@ -373,6 +390,12 @@ While 1
 	EinblendungPruefen()
 	If $gHilfe Then HilfePruefen()
 	EditorNachVorn()
+	; Strg+Alt+M ohne P/K: Hinweis wieder weg
+	If $gMetAnzeige And (Not $gMetWarten Or TimerDiff($gMetWarten) >= $MetWartenMs) Then
+		$gMetWarten = 0
+		$gMetAnzeige = False
+		ToolTip("")
+	EndIf
 	If $gProtokoll <> "" Then ProtokollSchreiben()
 	If UBound($gAblagen) And TimerDiff($gAblagenGeprueft) > 2000 Then AblagenPruefen()
 	; Windows entfernt einen Hook stillschweigend, wenn er einmal zu langsam antwortet (z.B. bei hoher
@@ -485,7 +508,18 @@ Func TastenHook($nCode, $wParam, $lParam)
 				$gGehaltenZeit = TimerInit()
 				Return 1
 			EndIf
+			; nach Strg+Alt+M waehlt die naechste Taste: P privat, K Kasse, Esc bricht ab, jede andere beendet das Warten
+			If $gMetWarten And Not (($vk >= 0x10 And $vk <= 0x12) Or ($vk >= 0xA0 And $vk <= 0xA5)) Then
+				Local $mWarte = TimerDiff($gMetWarten) < $MetWartenMs
+				$gMetWarten = 0
+				If $mWarte And ($vk = 0x50 Or $vk = 0x4B Or $vk = 0x1B) Then
+					If Not StringInStr($gUnten, "," & $vk & ",") Then $gUnten &= "," & $vk & ","
+					$gAufgabe = ($vk = 0x1B) ? "Metformin:Abbruch" : (($vk = 0x50) ? "Metformin:p" : "Metformin:k")
+					Return 1
+				EndIf
+			EndIf
 			Local $aufgabe = HookAufgabe($vk)
+			If $aufgabe = "MetforminWahl" Then $gMetWarten = TimerInit()
 			; Strg, Alt, Umsch selbst nicht, sonst stuende beim Neustart nur das Druecken von Strg+Alt da
 			If Not (($vk >= 0x10 And $vk <= 0x12) Or ($vk >= 0xA0 And $vk <= 0xA5)) Then $gHookLetzte = "Taste " & Hex($vk, 2) & " -> """ & $aufgabe & """, " & BriefTastenStand() & ", LosGemeldet " & $gLosGemeldet
 			If $aufgabe <> "" Then
@@ -512,6 +546,8 @@ Func HookAufgabe($vk)
 			And EditorAktiv() Then Return "Editor:Speichern"
 	If $vk = 0x53 And StrgAllein() And Gedrueckt(0x10) And EditorAktiv() Then Return "Editor:SpeichernUnter"
 	If $vk = 0x44 And AltAllein() And Not Gedrueckt(0x10) And EditorAktiv() Then Return "Editor:Datei"
+	; im Medikamentenkatalog: Alt+W klappt "Alle Wirkstaerken" auf
+	If $vk = 0x57 And AltAllein() And Not Gedrueckt(0x10) And KatalogAktiv() Then Return "Katalog:Wirkstaerke"
 	; Strg[+Umsch]+Buchstabe aus [Aufrufe], nur in Medical Office und nicht in einem Eingabefeld
 	If UBound($gAufrufe) > 0 And StrgAllein() Then
 		For $i = 0 To UBound($gAufrufe) - 1
@@ -563,6 +599,8 @@ Func HookAufgabe($vk)
 			Return $kalib ? "" : "LetztePatienten"
 		Case 0x20 ; Leertaste
 			Return $kalib ? "" : "Menue"
+		Case 0x4D ; M, nur in Medical Office: Metforminplan, P bzw. K folgt
+			Return ($kalib Or Not MOAktiv()) ? "" : "MetforminWahl"
 	EndSwitch
 	For $i = 0 To UBound($FilterTasten) - 1
 		If $vk <> $FilterTasten[$i] Then ContinueLoop
@@ -742,6 +780,9 @@ Func EinblendungZeigen()
 		Next
 	ElseIf EditorAktiv() Then
 		EditorPositionen($hWnd, $pos)
+	ElseIf KatalogAktiv() Then
+		Local $hW = KatalogWirkCombo($hWnd)
+		If $hW Then KnopfPos($pos, $hW, "Alt+W")
 	ElseIf TagesAktiv() Then
 		TagesPositionen($hWnd, $pos)
 	ElseIf MOAktiv() Then
@@ -935,6 +976,21 @@ Func Ausfuehren($aufgabe)
 	If $aufgabe = "Hochladen" Then Return Hochladen()
 	If $aufgabe = "Fensterliste" Then Return FensterListe()
 	If $aufgabe = "KalibBereich" Then Return KalibBereich()
+	If $aufgabe = "MetforminWahl" Then
+		$gMetAnzeige = True
+		HinweisStehend("Metforminplan: P = privat, K = Kasse, Esc = abbrechen")
+		Return True
+	EndIf
+	If $aufgabe = "Metformin:Abbruch" Then
+		$gMetAnzeige = False
+		Hinweis("Metforminplan abgebrochen")
+		Return True
+	EndIf
+	If StringLeft($aufgabe, 10) = "Metformin:" Then
+		$gMetAnzeige = False
+		Return MetforminPlan(StringTrimLeft($aufgabe, 10) = "k")
+	EndIf
+	If $aufgabe = "Katalog:Wirkstaerke" Then Return KatalogWirkstaerke()
 	Local $teil = StringSplit($aufgabe, ":", 2)
 	If UBound($teil) = 1 Then Return Reiter($aufgabe)
 	Switch $teil[0]
@@ -1046,6 +1102,312 @@ Func EditorPositionen($hWnd, ByRef $pos)
 		$pos[$i][2] = $t[$i]
 		$pos[$i][3] = -1
 	Next
+EndFunc
+
+; ist der Medikamentenkatalog das aktive Fenster? (im Hook, muss schnell sein)
+Func KatalogAktiv()
+	Return _WinAPI_GetClassName(_WinAPI_GetForegroundWindow()) = $KatalogKlasse
+EndFunc
+
+; Klappliste "Alle Wirkstaerken" im Medikamentenkatalog: die sichtbare TComboBox, die "Alle Wirkst..." oder eine
+; Staerke wie "779,86" zeigt (die Herstellerliste zeigt "Alle Hersteller", die Diagnoseliste ist unsichtbar)
+Func KatalogWirkCombo($hKat)
+	For $i = 1 To 10
+		Local $h = ControlGetHandle($hKat, "", "[CLASS:TComboBox; INSTANCE:" & $i & "]")
+		If @error Then ExitLoop
+		If Not _WinAPI_IsWindowVisible($h) Then ContinueLoop
+		If StringRegExp(ControlCommand($hKat, "", $h, "GetCurrentSelection", ""), "^(Alle Wirkst|\d+,\d+$)") Then Return $h
+	Next
+	Return 0
+EndFunc
+
+; Alt+W im Medikamentenkatalog: Fokus in "Alle Wirkstaerken" und aufklappen (dann waehlt z.B. "7" 779,86)
+Func KatalogWirkstaerke()
+	Local $hKat = _WinAPI_GetForegroundWindow()
+	If _WinAPI_GetClassName($hKat) <> $KatalogKlasse Then Return False
+	; Alt allein losgelassen sprange sonst in die Menueleiste und schloesse die Liste wieder
+	AltMaskieren()
+	Local $h = KatalogWirkCombo($hKat)
+	If Not $h Then Return Meldung("Klappliste ""Alle Wirkstaerken"" nicht gefunden")
+	ControlFocus($hKat, "", $h)
+	; 0x14F = CB_SHOWDROPDOWN
+	_SendMessage($h, 0x14F, 1, 0)
+	Return True
+EndFunc
+
+; ist "nur rabattierte Praeparate anzeigen" angehakt? 1 / 0, -1 = nicht zu sehen. Das Kaestchen (TNewCheckBox)
+; meldet seinen Zustand nicht (BM_GETCHECK immer 0) und zeichnet sich nicht per PrintWindow, daher am Bildschirm:
+; angehakt hat es ein dunkles Kreuz (gemessen 3.11.26: 30 dunkle Punkte, leer 0)
+Func KatalogRabattiert($hKat, ByRef $hBox)
+	$hBox = ControlGetHandle($hKat, "", "[CLASS:TNewCheckBox; INSTANCE:1]")
+	If @error Or StringLeft(ControlGetText($hKat, "", $hBox), 15) <> "nur rabattierte" Then Return -1
+	Local $p = WinGetPos($hBox)
+	If @error Then Return -1
+	Local $pt = DllStructCreate("int X;int Y")
+	$pt.X = $p[0] + 8
+	$pt.Y = $p[1] + 8
+	If _WinAPI_WindowFromPoint($pt) <> $hBox Then Return -1
+	Opt("PixelCoordMode", 1)
+	Local $n = 0
+	For $y = 2 To 13
+		For $x = 2 To 14
+			If BitAND(PixelGetColor($p[0] + $x, $p[1] + $y), 0xFF) < 128 Then $n += 1
+		Next
+	Next
+	Return ($n >= 10) ? 1 : 0
+EndFunc
+
+; wartet bis $ms auf ein sichtbares Fenster der Klasse $klasse (Handle, 0 = keins oder Esc gedrueckt)
+Func FensterDerKlasse($klasse, $ms)
+	Local $t = TimerInit()
+	While 1
+		Local $l = WinList("[CLASS:" & $klasse & "]")
+		For $i = 1 To $l[0][0]
+			If BitAND(WinGetState($l[$i][1]), 2) Then Return $l[$i][1]
+		Next
+		If $gSucheAbbruch Or TimerDiff($t) > $ms Then Return 0
+		Sleep(100)
+	WEnd
+EndFunc
+
+; wartet bis $ms, bis das Fenster $h zu ist
+Func FensterZu($h, $ms)
+	Local $t = TimerInit()
+	While WinExists($h) And BitAND(WinGetState($h), 2)
+		If $gSucheAbbruch Or TimerDiff($t) > $ms Then Return False
+		Sleep(100)
+	WEnd
+	Return True
+EndFunc
+
+; holt $h nach vorn; False, wenn das nicht gelingt
+Func MetVorn($h)
+	If _WinAPI_GetForegroundWindow() = $h Then Return True
+	WinActivate($h)
+	Return WinWaitActive($h, "", 3) <> 0
+EndFunc
+
+; Datum heute + $tage als "3.11.26"
+Func MetDatum($tage)
+	Local $d = StringSplit(_DateAdd("D", $tage, $gMetBeginn), "/", 2)
+	Return Int($d[2]) & "." & Int($d[1]) & "." & StringRight($d[0], 2)
+EndFunc
+
+; Fenster "Therapiebeginn" mit Datumsfeld (Vorgabe heute), immer im Vordergrund (TOPMOST, und solange es offen
+; ist, holt es sich den Fokus zurueck, damit niemand uebersieht, dass der Metforminplan darauf wartet); Enter
+; bestaetigt, Esc bricht ab (@error). Rueckgabe JJJJ/MM/TT wie _NowCalcDate
+Func MetBeginn()
+	Local $g = GUICreate("Metforminplan", 260, 100, -1, -1, BitOR($WS_CAPTION, $WS_SYSMENU), $WS_EX_TOPMOST)
+	GUICtrlCreateLabel("Therapiebeginn:", 12, 16, 90, 20)
+	Local $d = GUICtrlCreateDate("", 104, 12, 140, 22, $DTS_SHORTDATEFORMAT)
+	_GUICtrlDTP_SetFormat(GUICtrlGetHandle($d), "ddd dd.MM.yyyy")
+	Local $ok = GUICtrlCreateButton("OK", 76, 60, 80, 28, $BS_DEFPUSHBUTTON)
+	Local $ab = GUICtrlCreateButton("Abbrechen", 164, 60, 80, 28)
+	GUISetState(@SW_SHOW, $g)
+	WinActivate($g)
+	GUICtrlSetState($d, $GUI_FOCUS)
+	Local $erg = "", $fehler = 1
+	While 1
+		Local $msg = GUIGetMsg(1)
+		If $msg[1] = $g Then
+			; Esc kommt als GUI_EVENT_CLOSE
+			If $msg[0] = $GUI_EVENT_CLOSE Or $msg[0] = $ab Then ExitLoop
+			If $msg[0] = $ok Then
+				Local $st = _GUICtrlDTP_GetSystemTime(GUICtrlGetHandle($d))
+				$erg = StringFormat("%04d/%02d/%02d", $st[0], $st[1], $st[2])
+				$fehler = 0
+				ExitLoop
+			EndIf
+		EndIf
+		; nicht im Vordergrund (z.B. weggeklickt): zurueckholen, aber nicht, solange der Kalender aufgeklappt ist
+		If Not WinActive($g) And Not _GUICtrlDTP_GetMonthCal(GUICtrlGetHandle($d)) Then
+			WinActivate($g)
+		EndIf
+	WEnd
+	GUIDelete($g)
+	Return SetError($fehler, 0, $erg)
+EndFunc
+
+; Strg+Alt+M, P bzw. K: Metformin-Steigerungsplan. Kartei-Filter Medplan ([Metformin] Filter=, Vorgabe 3 wie
+; Strg+Alt+3), Strg+Ende, Pfeil hoch, w (juengsten Dosierplan wiederholen); ruckt die Markierung bei Pfeil hoch
+; nicht nach oben, gibt es keinen Plan, dann "mp" (neuer Plan). Im Dosierplan viermal Metformin eintragen
+; (MetforminZeile), zuletzt F2. Esc bricht zwischen zwei Schritten ab.
+Func MetforminPlan($kasse)
+	If Not ModifierLos() Then Return Meldung("Strg/Alt/Umsch noch gedrueckt")
+	ToolTip("")
+	Local $hWnd = WinGetHandle($MOFenster)
+	If @error Then Return Meldung("Medical Office nicht gefunden")
+	; vor $gSucheLaeuft, sonst schluckte der Hook das Esc des Fensters
+	$gMetBeginn = MetBeginn()
+	If @error Then Return Meldung("Metforminplan abgebrochen")
+	If Not MetVorn($hWnd) Then Return Meldung("Medical Office laesst sich nicht aktivieren")
+	$gSucheAbbruch = False
+	$gSucheLaeuft = True
+	Local $ok = MetforminAblauf($hWnd, $kasse)
+	$gSucheLaeuft = False
+	If $gSucheAbbruch Then
+		$gSucheAbbruch = False
+		Return Meldung("Metforminplan abgebrochen (Esc)")
+	EndIf
+	If $ok Then Hinweis("Metforminplan " & ($kasse ? "(Kasse)" : "(privat)") & " gespeichert")
+	Return $ok
+EndFunc
+
+Func MetforminAblauf($hWnd, $kasse)
+	HinweisStehend("Metforminplan " & ($kasse ? "(Kasse)" : "(privat)") & " ... Esc bricht ab")
+	If Not FilterWahl(Int(Einst("Metformin", "Filter", $defMetFilter))) Then Return False
+	Sleep(Int(Einst("Filter", "Warten", $defFilterWarten)))
+	If Not Unten() Then Return False
+	Local $hGrid = KarteiListe($hWnd)
+	If Not $hGrid Then Return Meldung("Karteikarte nicht gefunden")
+	TasteEinspeisen(0x23, False, True) ; Strg+Ende
+	Sleep(400)
+	Local $ok1, $ok2
+	Local $y1 = KarteiMarkiertY($hGrid, $ok1)
+	TasteEinspeisen(0x26, False) ; Pfeil hoch
+	Sleep(400)
+	Local $y2 = KarteiMarkiertY($hGrid, $ok2)
+	If $gSucheAbbruch Then Return False
+	If $ok2 And (Not $ok1 Or $y2 < $y1 - 3) Then
+		TasteEinspeisen(0x57, False) ; w: wiederholen
+	Else
+		; kein Dosierplan: neuer ueber das Kuerzel
+		TasteEinspeisen(0x23, False, True)
+		Sleep(300)
+		Send("mp", 1)
+	EndIf
+	Local $hPlan = FensterDerKlasse($PlanKlasse, 10000)
+	If Not $hPlan Then Return $gSucheAbbruch ? False : Meldung("Dosierplan ging nicht auf")
+	Sleep(Int(Einst("Metformin", "Warten", $defMetWarten)))
+	Local $grund = $kasse ? "Zucker" : "Stoffwechsel", $essen = " (nach dem Essen)"
+	If Not MetforminZeile($hPlan, $kasse, "", "0,5", $kasse ? "Kasse" : "Privat", MetDatum(0) & " - " & MetDatum(6) & $essen, $grund) Then Return False
+	If Not MetforminZeile($hPlan, $kasse, "", "1", "Fremd", MetDatum(7) & " - " & MetDatum(13) & $essen, $grund) Then Return False
+	If Not MetforminZeile($hPlan, $kasse, "0,5", "1", "Fremd", MetDatum(14) & " - " & MetDatum(20) & $essen, $grund) Then Return False
+	If Not MetforminZeile($hPlan, $kasse, "1", "1", "Fremd", "ab " & MetDatum(21) & $essen, $grund) Then Return False
+	If Not MetVorn($hPlan) Then Return Meldung("Dosierplan laesst sich nicht aktivieren")
+	TasteEinspeisen(0x71, False) ; F2 speichern
+	Return True
+EndFunc
+
+; eine Zeile im Dosierplan: Strg+A (Medikamentenkatalog), "Metformin" suchen, "nur rabattierte" bei Kasse an,
+; sonst aus, Wirkstaerke 779,86 (1000 mg Metformin-HCl), N3, Enter (Medikament verordnen); dort morgens/abends,
+; Rezeptart ("Privat", "Kasse" (ist sie gesperrt, bleibt die Vorgabe), "Fremd"), OK; Katalog mit Esc schliessen;
+; im Dosierplan Strg+Ende, 6x Pfeil links (Hinweise), Hinweis, Tab, Pfeil rechts, Grund, Tab
+Func MetforminZeile($hPlan, $kasse, $morgens, $abends, $rezept, $hinweis, $grund)
+	If $gSucheAbbruch Then Return False
+	If Not MetVorn($hPlan) Then Return Meldung("Dosierplan laesst sich nicht aktivieren")
+	TasteEinspeisen(0x41, False, True) ; Strg+A: neues Medikament
+	Local $hKat = FensterDerKlasse($KatalogKlasse, 8000)
+	If Not $hKat Then Return $gSucheAbbruch ? False : Meldung("Medikamentenkatalog ging nicht auf")
+	If Not MetVorn($hKat) Then Return Meldung("Medikamentenkatalog laesst sich nicht aktivieren")
+	Sleep(300)
+	; suchen
+	Local $hSuch = ControlGetHandle($hKat, "", "[CLASS:TAlnumEdit; INSTANCE:1]")
+	If @error Then Return Meldung("Suchfeld im Medikamentenkatalog nicht gefunden")
+	ControlFocus($hKat, "", $hSuch)
+	TasteEinspeisen(0x41, False, True) ; Strg+A: alles markieren
+	Send("Metformin", 1)
+	; die Liste der Wirkstaerken fuellt sich mit dem Suchergebnis; kommt 779,86 nicht, die Lupe druecken
+	Local $hW = 0, $t = TimerInit(), $lupe = False
+	While 1
+		$hW = KatalogWirkCombo($hKat)
+		If $hW And ControlCommand($hKat, "", $hW, "FindString", "779,86") <> -1 And Not @error Then ExitLoop
+		If $gSucheAbbruch Then Return False
+		If TimerDiff($t) > Int(Einst("Metformin", "SuchWarten", $defMetSuchWarten)) Then
+			If $lupe Then Return Meldung("Metformin 779,86 nicht im Medikamentenkatalog gefunden")
+			$lupe = True
+			ControlClick($hKat, "", "[CLASS:TNewBitBtn; INSTANCE:8]")
+			$t = TimerInit()
+		EndIf
+		Sleep(200)
+	WEnd
+	; nur rabattierte: Kasse an, privat aus
+	Local $hBox, $r = KatalogRabattiert($hKat, $hBox)
+	If $r < 0 Then Return Meldung("Kaestchen ""nur rabattierte"" nicht zu sehen")
+	If $r <> ($kasse ? 1 : 0) Then
+		ControlClick($hKat, "", $hBox, "left", 1, 8, 8)
+		Sleep(800)
+		If KatalogRabattiert($hKat, $hBox) <> ($kasse ? 1 : 0) Then Return Meldung("Kaestchen ""nur rabattierte"" laesst sich nicht umschalten")
+	EndIf
+	; Wirkstaerke: aufklappen, "7" (erste mit 7 ist 779,86), Enter
+	$hW = KatalogWirkCombo($hKat)
+	If Not $hW Then Return Meldung("Klappliste ""Alle Wirkstaerken"" nicht gefunden")
+	ControlFocus($hKat, "", $hW)
+	_SendMessage($hW, 0x14F, 1, 0) ; CB_SHOWDROPDOWN
+	Sleep(200)
+	TasteEinspeisen(0x37, False) ; 7
+	Sleep(100)
+	TasteEinspeisen(0x0D, False) ; Enter
+	Sleep(600)
+	If ControlCommand($hKat, "", $hW, "GetCurrentSelection", "") <> "779,86" Then Return Meldung("Wirkstaerke 779,86 nicht gewaehlt")
+	TasteEinspeisen(0x33, True) ; Alt+3: N3
+	Sleep(800)
+	If $gSucheAbbruch Then Return False
+	TasteEinspeisen(0x0D, False) ; Enter: Medikament verordnen
+	Local $hDlg = FensterDerKlasse($VerordnenKlasse, 6000)
+	If Not $hDlg Then Return $gSucheAbbruch ? False : Meldung("Fenster ""Medikament verordnen"" ging nicht auf")
+	If Not MetVorn($hDlg) Then Return Meldung("""Medikament verordnen"" laesst sich nicht aktivieren")
+	Sleep(300)
+	; zur Sicherheit: verordnet wird Metformin 1000 mg (das Rezeptfeld steht links oben)
+	Local $rp = ControlGetText($hDlg, "", "[CLASS:TAlnumMemo; INSTANCE:1]")
+	If $rp <> "" And Not StringRegExp($rp, "(?i)metformin.*1000") Then Return Meldung("Unerwartetes Medikament: " & $rp)
+	If Not MetDosis($hDlg, "M&orgens", $morgens) Then Return False
+	If Not MetDosis($hDlg, "A&bends", $abends) Then Return False
+	Local $radio = ($rezept = "Fremd") ? "&Fremdverordnung" : (($rezept = "Kasse") ? "Kassen&rezept" : "&Privatrezept")
+	Local $hRadio = ControlGetHandle($hDlg, "", "[CLASS:TRadioButton; TEXT:" & $radio & "]")
+	If @error Then Return Meldung("Rezeptart " & StringReplace($radio, "&", "") & " nicht gefunden")
+	If ControlCommand($hDlg, "", $hRadio, "IsEnabled", "") Then
+		ControlClick($hDlg, "", $hRadio)
+		Sleep(200)
+		If Not ControlCommand($hDlg, "", $hRadio, "IsChecked", "") Then Return Meldung("Rezeptart " & StringReplace($radio, "&", "") & " nicht gewaehlt")
+	EndIf
+	If $gSucheAbbruch Then Return False
+	ControlClick($hDlg, "", "[CLASS:TmoButton; TEXT:OK]")
+	If Not FensterZu($hDlg, 6000) Then Return $gSucheAbbruch ? False : Meldung("""Medikament verordnen"" blieb offen (Rueckfrage?)")
+	; Katalog schliessen
+	If Not MetVorn($hKat) Then Return Meldung("Medikamentenkatalog laesst sich nicht aktivieren")
+	TasteEinspeisen(0x1B, False) ; Esc
+	If Not FensterZu($hKat, 5000) Then Return $gSucheAbbruch ? False : Meldung("Medikamentenkatalog blieb offen")
+	; Hinweis und Grund in die neue (letzte) Zeile
+	If Not MetVorn($hPlan) Then Return Meldung("Dosierplan laesst sich nicht aktivieren")
+	Sleep(500)
+	TasteEinspeisen(0x23, False, True) ; Strg+Ende
+	Sleep(200)
+	For $i = 1 To 6
+		TasteEinspeisen(0x25, False) ; Pfeil links
+		Sleep(60)
+	Next
+	Send($hinweis, 1)
+	Sleep(100)
+	TasteEinspeisen(0x09, False) ; Tab
+	Sleep(150)
+	TasteEinspeisen(0x27, False) ; Pfeil rechts
+	Sleep(100)
+	Send($grund, 1)
+	Sleep(100)
+	TasteEinspeisen(0x09, False) ; Tab
+	Sleep(300)
+	Return True
+EndFunc
+
+; "Medikament verordnen": Dosis $wert ("" = nichts) in das Feld rechts neben dem Knopf $knopf (z.B. "A&bends")
+Func MetDosis($hDlg, $knopf, $wert)
+	If $wert = "" Then Return True
+	Local $k = ControlGetPos($hDlg, "", "[CLASS:TmoButton; TEXT:" & $knopf & "]")
+	If @error Then Return Meldung("Knopf " & StringReplace($knopf, "&", "") & " nicht gefunden")
+	For $i = 1 To 10
+		Local $h = ControlGetHandle($hDlg, "", "[CLASS:TFloatxMemo; INSTANCE:" & $i & "]")
+		If @error Then ExitLoop
+		Local $p = ControlGetPos($hDlg, "", $h)
+		If @error Or Abs($p[1] - $k[1]) > 4 Or $p[0] <= $k[0] Or $p[0] > $k[0] + $k[2] + 40 Then ContinueLoop
+		ControlFocus($hDlg, "", $h)
+		Send("{HOME}+{END}")
+		Send($wert, 1)
+		Sleep(100)
+		If ControlGetText($hDlg, "", $h) <> $wert Then Return Meldung(StringReplace($knopf, "&", "") & ": " & $wert & " nicht eingetragen")
+		Return True
+	Next
+	Return Meldung("Feld " & StringReplace($knopf, "&", "") & " nicht gefunden")
 EndFunc
 
 ; ist der Briefversand das aktive Fenster? (im Hook, muss schnell sein)

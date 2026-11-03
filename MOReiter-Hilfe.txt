@@ -53,6 +53,17 @@ Strg+Alt+F1         diese Hilfe bzw. holt sie wieder nach vorn (die Hilfe von Me
 
 Strg+Alt+D          Explorer mit einem Dokumentenordner des Patienten (z.B. p:\dok\<Pat_id>), in jedem
                     Fenster von Medical Office und ggf. im Patientenlaufzettel
+Strg+Alt+M, dann P bzw. K
+                    Metformin-Steigerungsplan für den aktuellen Patienten: erst fragt ein Fenster
+                    "Therapiebeginn" das Datum ab (Vorgabe heute; Enter bestätigt, Esc bricht ab), die
+                    Wochen zählen ab diesem Tag; dann Filter Medplan (Strg+Alt+3),
+                    jüngsten Dosierplan wiederholen (gibt es keinen, einen neuen anlegen) und viermal
+                    Metformin 1000 mg N3 eintragen, je eine Woche, mit "(nach dem Essen)":
+                    abends 0,5 / abends 1 / morgens 0,5 + abends 1 / ab der 4. Woche 1-0-1;
+                    P: nicht nur rabattierte Präparate, Privatrezept, Grund "Stoffwechsel";
+                    K: nur rabattierte, Kassenrezept (bei Privatpatienten bleibt es beim Privatrezept),
+                    Grund "Zucker"; die Zeilen 2-4 als Fremdverordnung; zuletzt F2 (speichern).
+                    Esc bricht ab; geht etwas nicht wie erwartet, hält MOReiter mit einer Meldung an
 
 
 KRANKENBLATTFILTER (Filter-Registrierkarten-Reiter links oder unten) (bevor Sie hier alles lesen: s.o. -> Tasten-Einblendung!)
@@ -117,6 +128,11 @@ Alt+D      Datei-Menü öffnen
 Strg+Alt halten zeigt diese drei Tasten links oben an.
 Landet Alt+Tab auf dem (gesperrten, unsichtbar darunterliegenden) Fenster, dem der Editor gehört, z.B.
 "MO-Datenpflegesystem", holt MOReiter den Editor nach vorn; sonst nähme er scheinbar keine Tasten an.
+
+
+MEDIKAMENTENKATALOG
+----------------------------------------------------------------------------------------------------
+Alt+W      Klappliste "Alle Wirkstärken" aufklappen (dann wählt z.B. "7" die erste Stärke mit 7)
 
 
 KALIBRIEREN (nur nötig, wenn ein Klick daneben geht)
@@ -395,6 +411,8 @@ gilt der eingebaute Wert. Alle drei haben denselben Aufbau; Kalibrieren schreibt
 [Briefversand]     EmpfaengerX, EmpfaengerY; Betreff, Empfaenger, Vorschau = Control in AutoIt-
                    Schreibweise, falls die automatische Suche danebenliegt
 [Editor]           Warten=350   ms nach Ctrl+S, bis ein noch offener Editor geschlossen wird
+[Metformin]        Filter=3     Nummer des Filters Medplan (wie Strg+Alt+3); Warten=1000 ms nach dem
+                   Öffnen des Dosierplans; SuchWarten=5000 ms auf das Suchergebnis im Katalog
 
 
 Hinweis: AutoIt-Skript, Quelltext MOReiter.au3 (https://github.com/libelle17/MOReiter, GPL-3.0); kompilieren
