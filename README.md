@@ -13,6 +13,9 @@ Tastatur an Stellen, wo es sonst nur die Maus gibt, zum Beispiel:
 - Karteikarte: Strg+Umsch+G blättert zu einem abgefragten Datum, Strg+Umsch+F springt zum vorigen (bzw.
   von oben aus zum nächsten) Eintrag eines abgefragten Typs (auch nur dessen Anfang oder ein Teil davon) (Spalte „Typ“, mit Blick in die Datenbank, ob es überhaupt einen gibt);
   beide lesen die Liste mit der Texterkennung von Windows,
+- Editor von Medical Office (z.B. Autotext im Datenpflegesystem): F2 speichert und schließt zuverlässig (bzw.
+  schließt, wenn nichts geändert wurde), Strg+Umsch+S „Speichern unter“, Alt+D öffnet das Datei-Menü; landet
+  Alt+Tab auf dem gesperrten Fenster unter dem Editor, holt MOReiter den Editor wieder nach vorn,
 - Briefversand, ePA-Hochladen, zuletzt geöffnete Patienten, Hauptmenü …,
 - Strg+Alt zeigt farbig, welche Tasten in der aktuellen Ansicht was bewirken,
 - Strg+Alt+F1 zeigt die Hilfe mit allen Tasten, die auf diesem PC eingerichtet sind
