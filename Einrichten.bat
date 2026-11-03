@@ -13,12 +13,14 @@ tasklist /fi "imagename eq MOReiter.exe" 2>nul | find /i "MOReiter.exe" >nul
 if errorlevel 1 goto beendet
 echo Beende den laufenden MOReiter ...
 taskkill /im MOReiter.exe >nul 2>&1
+rem 1 s warten mit ping statt timeout: timeout bricht ohne Konsolenfenster sofort ab ("Eingabeumleitung wird nicht
+rem unterstuetzt"), z.B. aus Claude Code oder einer Aufgabenplanung aufgerufen
 for /l %%i in (1,1,10) do (
 	tasklist /fi "imagename eq MOReiter.exe" 2>nul | find /i "MOReiter.exe" >nul || goto beendet
-	timeout /t 1 /nobreak >nul
+	ping -n 2 127.0.0.1 >nul
 )
 taskkill /f /im MOReiter.exe >nul 2>&1
-timeout /t 1 /nobreak >nul
+ping -n 2 127.0.0.1 >nul
 :beendet
 if /i "%~1"=="beenden" goto :eof
 :starten
@@ -37,6 +39,10 @@ set LNK=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\MOReiter.lnk
 if "%AUTO%"=="0" if exist "%LNK%" del "%LNK%"
 if "%AUTO%"=="1" powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('%LNK%'); $s.TargetPath='%APPDATA%\MOReiter\MOReiter.exe'; $s.WorkingDirectory='%APPDATA%\MOReiter'; $s.Save()"
 if "%AUTO%"=="1" echo Autostart: %LNK%
-start "" /d "%APPDATA%\MOReiter" "%APPDATA%\MOReiter\MOReiter.exe"
+rem ueber Start-Process (ShellExecute) statt start: mit start erbt MOReiter die Handles des Aufrufers, auch eine Pipe,
+rem und wer die Ausgabe liest (z.B. Claude Code), wartet dann, bis MOReiter beendet wird
+powershell -NoProfile -Command "Start-Process -FilePath '%APPDATA%\MOReiter\MOReiter.exe' -WorkingDirectory '%APPDATA%\MOReiter'"
 echo MOReiter laeuft (Symbol im Infobereich der Taskleiste, ggf. unter dem kleinen Pfeil; Hilfe: Strg+Alt+F1).
-timeout /t 5 >nul
+rem ohne Konsolenfenster bricht timeout sofort ab, dann eben ohne die 5 s zum Lesen
+timeout /t 5 >nul 2>&1
+exit /b 0
