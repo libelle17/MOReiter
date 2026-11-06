@@ -5153,8 +5153,36 @@ Func Explorer()
 	If @error Then Return Meldung("Patientennummer von " & $vor & " " & $nach & " nicht eindeutig (" & $pid & ")")
 	Local $vz = StringRegExpReplace(Einst("Dokumente", "Dok", "p:\dok"), "\\$", "") & "\" & $pid
 	If Not FileExists($vz) Then Return Meldung("Dokumentenordner " & $vz & " (noch) nicht vorhanden")
+	Local $alt = WinList("[CLASS:CabinetWClass]")
 	ShellExecute("explorer.exe", '"' & $vz & '"')
+	ExplorerWaechter($alt)
 	Return True
+EndFunc
+
+; das eben geoeffnete Explorer-Fenster (nicht in $alt, Ergebnis von WinList) nach einer Stunde schliessen lassen: Expaufruf.exe
+; ([Dokumente] ExpAufruf=) startet dafuer einen Waechter, s. FensterZu.bas in ExpAufruf. Aeltere Expaufruf.exe kennen
+; "/waechter" nicht und oeffnen stattdessen den Patienten aus turbcust.gdt, deshalb nur ab diesem Stand; sonst bleibt das Fenster offen
+Func ExplorerWaechter(ByRef $alt)
+	Local $exe = Einst("Dokumente", "ExpAufruf", "C:\Program Files (x86)\Expaufruf.exe")
+	If Number(FileGetTime($exe, 0, 1)) < 20261106000000 Then Return
+	Local $t = TimerInit()
+	While TimerDiff($t) < 8000
+		Local $jetzt = WinList("[CLASS:CabinetWClass]")
+		For $i = 1 To $jetzt[0][0]
+			Local $bekannt = False
+			For $j = 1 To $alt[0][0]
+				If $jetzt[$i][1] = $alt[$j][1] Then
+					$bekannt = True
+					ExitLoop
+				EndIf
+			Next
+			If Not $bekannt Then
+				Run('"' & $exe & '" /waechter ' & Int($jetzt[$i][1]), "", @SW_HIDE)
+				Return
+			EndIf
+		Next
+		Sleep(100)
+	WEnd
 EndFunc
 
 Func Portal($s)
