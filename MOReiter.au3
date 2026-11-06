@@ -260,6 +260,8 @@ Global $gLaeuft = "", $gLaeuftZeit = 0, $gBesetzt = ""
 ; Zustand des Hooks fuer die Momentaufnahme beim Neustart (NeustartPruefen): letzter Aufruf des Rueckrufs, letzte
 ; ausgewertete Taste mit ihrer Aufgabe, letztes Einhaengen, ob Strg+Alt+Esc ueber den Hook oder den Hotkey kam
 Global $gHookZeit = TimerInit(), $gHookLetzte = "", $gErneuertZeit = TimerInit(), $gErneuertOk = True, $gNeustartWeg = ""
+; Strg+Alt+A ist als durchgelassen protokolliert, bis A wieder los ist (TasteADurchPruefen)
+Global $gADurch = False
 ; offenes Hilfefenster (0 = keins), sein Textfeld (RichEdit-Handle) und dessen Text (Zeilenende @CR wie im RichEdit),
 ; das Suchfeld, die unsichtbaren Controls fuer die Tasten (Strg+A, Strg+F, F3/Enter, Bild auf/ab, Strg+Pos1/Ende,
 ; Esc) und die Stelle des letzten Treffers (0 = von vorn)
@@ -382,6 +384,8 @@ While 1
 		; lange Aufgaben ins Protokoll (Aufrufe.log), um ein Haengen nachvollziehen zu koennen
 		If TimerDiff($gLaeuftZeit) > 5000 Then Protokoll("Aufgabe " & $aufgabe & ": " & Round(TimerDiff($gLaeuftZeit) / 1000) & _
 				" s, " & ($ok ? "erledigt" : "Fehler (" & $gMeldung & ")"))
+		If $aufgabe = "Abhaken" And Not $ok And $gAufrufProtokoll Then Protokoll("Abhaken abgebrochen: " & _
+				(($gMeldung = "") ? "ohne Meldung" : $gMeldung) & "; Vordergrund " & VordergrundText())
 		$gLaeuft = ""
 		$gHaltStart = 0
 		$gEinblendungVersucht = False
@@ -396,6 +400,7 @@ While 1
 		$gMetAnzeige = False
 		ToolTip("")
 	EndIf
+	TasteADurchPruefen()
 	If $gProtokoll <> "" Then ProtokollSchreiben()
 	If UBound($gAblagen) And TimerDiff($gAblagenGeprueft) > 2000 Then AblagenPruefen()
 	; Windows entfernt einen Hook stillschweigend, wenn er einmal zu langsam antwortet (z.B. bei hoher
@@ -2017,6 +2022,27 @@ EndFunc
 
 Func Protokoll($txt)
 	$gProtokoll &= @YEAR & "-" & @MON & "-" & @MDAY & " " & @HOUR & ":" & @MIN & ":" & @SEC & "  " & $txt & @CRLF
+EndFunc
+
+Func VordergrundText()
+	Local $h = _WinAPI_GetForegroundWindow()
+	Return _WinAPI_GetClassName($h) & " """ & _WinAPI_GetWindowText($h) & """"
+EndFunc
+
+; Fehlersuche, nur mit [Aufrufe] Protokoll=1: Strg+Alt+A kam beim aktiven Fenster an, statt von MOReiter ausgewertet
+; zu werden. Eine geschluckte Taste sieht GetAsyncKeyState nicht, ist A hier also gedrueckt, hat sie der Hook nicht
+; geschluckt. Steht bei "zuletzt" nicht Taste 41, hat er sie gar nicht erst bekommen
+Func TasteADurchPruefen()
+	If Not $gAufrufProtokoll Then Return
+	If Not Gedrueckt(0x41) Then
+		$gADurch = False
+		Return
+	EndIf
+	If $gADurch Or Not (Gedrueckt(0x11) And Gedrueckt(0x12)) Then Return
+	$gADurch = True
+	Protokoll("Strg+Alt+A durchgelassen: Vordergrund " & VordergrundText() & "; Hook zuletzt aufgerufen vor " & _
+			Round(TimerDiff($gHookZeit) / 1000, 1) & " s, zuletzt eingehaengt vor " & Round(TimerDiff($gErneuertZeit) / 1000, 1) & _
+			" s (" & ($gErneuertOk ? "ok" : "fehlgeschlagen") & "); zuletzt " & $gHookLetzte & "; AltGr async " & Gedrueckt(0xA5))
 EndFunc
 
 Func ProtokollSchreiben()
@@ -9301,7 +9327,8 @@ EndFunc
 Func Meldung($txt)
 	$gMeldung = $txt
 	SmartPixLog("Meldung: " & $txt)
-	If $CmdLine[0] > 0 And Not $gLink Then
+	; "Neustart" ist das residente MOReiter nach Strg+Alt+Esc, kein Aufruf von aussen: es hat keine Konsole
+	If $CmdLine[0] > 0 And $CmdLine[1] <> "Neustart" And Not $gLink Then
 		ConsoleWriteError($txt & @CRLF)
 	Else
 		Hinweis($txt)
