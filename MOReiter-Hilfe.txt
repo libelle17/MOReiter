@@ -398,10 +398,12 @@ gilt der eingebaute Wert. Alle drei haben denselben Aufbau; Kalibrieren schreibt
 [SmartPix]    Programm=, Knopf=, Suche=, Zeile=, Bearbeiten=   Programm und Klickstellen (x,y im
                                  Fensterinneren)
 [SmartPixListe] Datei=, Max=, Kante=   Strg+Umsch+S (s. MOReiter-Vorgaben.ini); quelle braucht
-                                 [quelle] uid=, pwd= in der Zugang.ini
+                                 [Allgemein] QuelleZugang= oder [quelle] uid=, pwd= in der Zugang.ini
 [Zucker]      Libre=Portal:LibreView   Markierung, deren Text "Libre" enthält: dieser Befehl (Portal:...,
                                  Befehlszeile oder Taste aus [Aufrufe] wie Strg+S); leer = kein Abruf
 [Allgemein]   Zugang=...\Zugang.ini   Zugangsdaten zur Datenbank von Medical Office ([medoff] uid, pwd);
+              QuelleZugang=\\linux1\dbverbfreigabe\dbverb.cfg   Zugangsdaten zu quelle wie bei Dateilese,
+                                 gelten vor [quelle] in der Zugang.ini
               MOPort=2020        Server aus der Registry von Dateilese (MOServer, sonst wser; MORes, wres)
               Protokoll=1        diese Tasten mit Fokus und Entscheidung nach %APPDATA%\MOReiter\Aufrufe.log
 [Hochladen]   Warten=300, LeistungWarten=1500   ms bis "Hochladen" bzw. auf den Leistungsdialog

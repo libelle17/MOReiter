@@ -171,6 +171,8 @@ Global $gFilterInfo = ""
 ; Tagesuebersicht (gemessen 28.9.26, Pixel relativ zur Liste): Spalten "Bereich" und "Name",
 ; farbige Randspalte links, Kopfzeile, Zeilenhoehe, Farbe des eingedrueckten Knopfs "Offene To-Dos"
 Const $TagesKlasse = "TfrmTagesUebersicht"
+; zentrale Datei mit den Zugangsdaten zu quelle, dieselbe wie bei Dateilese ([Allgemein] QuelleZugang=)
+Const $defQuelleZugang = "\\linux1\dbverbfreigabe\dbverb.cfg"
 Const $defBereichX = 470, $defNameX = 150, $defAbhakenWarten = 300, $defPfeilX = 26, $defPfeilY = 18, _
 		$defAbhakenRuhe = 500, $defAbhakenNachkontrolle = 500, _
 		$defWartVon = 380, $defWartBis = 485
@@ -4679,7 +4681,10 @@ EndFunc
 Func DBVerbinden($welche)
 	Local $zugang = Einst("Allgemein", "Zugang", "C:\Program Files (x86)\Dateilesen\Zugang.ini")
 	Local $uid = IniRead($zugang, $welche, "uid", ""), $pwd = IniRead($zugang, $welche, "pwd", "")
-	If $uid = "" Then Return SetError(1, 0, "Keine Zugangsdaten zu " & $welche & " ([" & $welche & "] uid=, pwd= in " & $zugang & ")")
+	If $welche = "quelle" Then ZentraleZugangsdaten($uid, $pwd)
+	If $uid = "" Then Return SetError(1, 0, "Keine Zugangsdaten zu " & $welche & " (" & _
+			(($welche = "quelle") ? Einst("Allgemein", "QuelleZugang", $defQuelleZugang) & " nicht lesbar und kein " : "") & _
+			"[" & $welche & "] uid=, pwd= in " & $zugang & ")")
 	Local $verb = "DRIVER={MySQL ODBC 8.0 Unicode Driver};option=0;database=" & $welche & ";uid=" & $uid & ";pwd=" & $pwd & ";port="
 	Local $server[2]
 	If $welche = "medoff" Then
@@ -4701,6 +4706,24 @@ Func DBVerbinden($welche)
 		$fehler &= @CRLF & $srv & ": " & $gComFehler
 	Next
 	Return SetError(1, 0, "Keine Verbindung zur Datenbank " & $welche & ":" & $fehler)
+EndFunc
+
+; Zugangsdaten zu quelle aus der zentralen Datei wie Dateilese (LiesZentraleDatei in DBVerb.frm), damit eine Aenderung
+; des Passworts nur dort noetig ist; steht dort nichts oder ist sie nicht lesbar, bleiben $uid und $pwd unveraendert
+Func ZentraleZugangsdaten(ByRef $uid, ByRef $pwd)
+	Local $datei = Einst("Allgemein", "QuelleZugang", $defQuelleZugang)
+	If $datei = "" Then Return
+	Local $u = "", $p = "", $z, $k
+	For $zeile In StringSplit(StringStripCR(FileRead($datei)), @LF, 2)
+		$z = StringInStr($zeile, "=")
+		If $z < 2 Then ContinueLoop
+		$k = StringStripWS(StringLeft($zeile, $z - 1), 3)
+		If $k = "uid" And $u = "" Then $u = StringMid($zeile, $z + 1)
+		If $k = "pwd" And $p = "" Then $p = StringMid($zeile, $z + 1)
+	Next
+	If $u = "" Or $p = "" Then Return
+	$uid = $u
+	$pwd = $p
 EndFunc
 
 ; Wert aus HKCU\Software\GSProducts\Dateilese (Einstellungen von Dateilese), sonst $vorgabe
