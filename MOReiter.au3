@@ -76,7 +76,11 @@
 ;                              Alt losgelassen wird, stehen gelbe Schildchen an allen Stellen im aktiven
 ;                              Fenster, auf die eine Taste gerade wirken wuerde:
 ;                              Hauptfenster: K, L, P an den Reitern (K bzw. P an dem, zu dem gewechselt
-;                              wuerde), U an der Karteikarte, Z am Pfeil neben der Patientensuche, Leer am Menueknopf, H am
+;                              wuerde), U an der Karteikarte, darunter "Gehe zu:" Strg+Umsch+G bei Datum und "Suchen:"
+;                              Strg+Umsch+F bei Typ, am rechten Rand Strg+Alt+T und M, dann die externen Aufrufe aus
+;                              [Aufrufe], Strg+Alt+D und Strg+Umsch+T, ausser erkennbar nicht wirksamen (Aufrufe im Eingabefeld,
+;                              Programm fehlt, Portal ohne Url=, Dokumentenordner fehlt),
+;                              Z am Pfeil neben der Patientensuche, Leer am Menueknopf, H am
 ;                              Hochladen-Pfeil der markierten Zeile, an den Filtern der Kartei die
 ;                              Ziffernblock-Nummer und dahinter die direkte Taste, wenn sie anders heisst
 ;                              (z.B. "0 ^", "5", "11 sz"); Diagnoseerfassung: ebenso an den Kurzwahlen;
@@ -806,7 +810,10 @@ Func EinblendungZeigen()
 	DllCall("user32.dll", "bool", "SetLayeredWindowAttributes", "hwnd", $g, "dword", 0xFF00FF, "byte", 255, "dword", 1)
 	For $i = 0 To $n - 1
 		Local $t = $pos[$i][2]
-		GUICtrlCreateLabel($t, $pos[$i][0] - $f[0], $pos[$i][1] - $f[1] - 8, SchildBreite($t), 16, BitOR($SS_CENTER, $SS_CENTERIMAGE))
+		; mehrzeilig (@LF im Text): Mitte y bleibt; $SS_CENTERIMAGE liesse nur eine Zeile zu
+		Local $zeilen = UBound(StringSplit($t, @LF, 2))
+		GUICtrlCreateLabel($t, $pos[$i][0] - $f[0], $pos[$i][1] - $f[1] - 8 * $zeilen, SchildBreite($t), 16 * $zeilen, _
+				($zeilen > 1) ? $SS_CENTER : BitOR($SS_CENTER, $SS_CENTERIMAGE))
 		GUICtrlSetBkColor(-1, 0xFFE45C)
 		GUICtrlSetColor(-1, 0x000000)
 		GUICtrlSetFont(-1, 8.5, 700, 0, "Segoe UI")
@@ -836,7 +843,11 @@ Func NummerText($i)
 EndFunc
 
 Func SchildBreite($t)
-	Return 7 * StringLen($t) + 8
+	Local $max = 0
+	For $z In StringSplit($t, @LF, 2)
+		If StringLen($z) > $max Then $max = StringLen($z)
+	Next
+	Return 7 * $max + 8
 EndFunc
 
 ; haengt ein Schildchen mittig ueber dem Bildschirmpunkt $x,$y an $pos an; wirken zwei Tasten auf
@@ -875,8 +886,125 @@ Func MOPositionen($hWnd, ByRef $pos)
 	If $hGrid And HochladenStelle($hGrid, $hx, $hy) = "" Then PosDazu($pos, $hx, $hy, "H")
 	; U mitten auf die Kopfzeile der Karteikarte
 	Local $g = $hGrid ? WinGetPos($hGrid) : 0
-	If IsArray($g) Then PosDazu($pos, $g[0] + Int($g[2] / 2), $g[1] + Int($KbKopfHoehe / 2), "U")
+	If IsArray($g) Then
+		PosDazu($pos, $g[0] + Int($g[2] / 2), $g[1] + Int($KbKopfHoehe / 2), "U")
+		; Strg+Umsch+G bzw. F unter den Spaltenkoepfen "Datum" und "Typ"
+		KarteiSuchPos($pos, $g, "Datum", "Gehe zu:", 2)
+		KarteiSuchPos($pos, $g, "Typ", "Suchen:", Int(Einst("Karteikarte", "TypAb", "98")))
+	EndIf
 	FilterPositionen($hWnd, $pos)
+	AufrufPositionen($hWnd, $pos)
+EndFunc
+
+; Schildchen "Taste Programm" untereinander am rechten Rand: Strg+Alt+T und M, eine Zeile frei, die externen Aufrufe
+; aus [Aufrufe], Strg+Alt+D, eine Zeile frei, die Benutzerskripte. Weg bleibt, was jetzt erkennbar nicht wirken wuerde: alle Aufrufe in einem
+; Eingabefeld (die Taste bleibt dort beim Feld, s. Hook; Strg+Alt wirkt auch dort), einzelne nach AufrufAnwendbar,
+; Strg+Alt+D ohne den Ordner der Patientendokumente
+Func AufrufPositionen($hWnd, ByRef $pos)
+	Local $f = WinGetPos($hWnd)
+	If @error Then Return
+	; ab der Unterkante der Reiterleiste, sonst etwa dort
+	Local $y = $f[1] + 148
+	Local $hCtrl = ControlGetHandle($hWnd, "", Einst("Allgemein", "Control", $defCtrl))
+	If Not @error And BitAND(WinGetState($hCtrl), 2) Then
+		Local $p = WinGetPos($hCtrl)
+		If Not @error Then $y = $p[1] + $p[3] + 12
+	EndIf
+	Local $rechts = $f[0] + $f[2] - 18, $unten = $f[1] + $f[3] - 18
+	RandSchild($pos, $rechts, $y, "Strg+Alt+T Termine kurz anzeigen")
+	RandSchild($pos, $rechts, $y, "Strg+Alt+M Metforminplan")
+	$y += 18
+	Local $skripte = ""
+	If Not TextFokus() Then
+		For $i = 0 To UBound($gAufrufe) - 1
+			If $y > $unten Then ExitLoop
+			If Not AufrufAnwendbar($gAufrufe[$i][3]) Then ContinueLoop
+			Local $t = $gAufrufe[$i][0] & " " & AufrufKurz($gAufrufe[$i][3])
+			If $gAufrufe[$i][3] = "Skripte" Then
+				$skripte = $t
+			Else
+				RandSchild($pos, $rechts, $y, $t)
+			EndIf
+		Next
+	EndIf
+	If FileExists(Einst("Dokumente", "Dok", "p:\dok")) Then RandSchild($pos, $rechts, $y, "Strg+Alt+D Explorer")
+	If $skripte <> "" Then
+		$y += 18
+		RandSchild($pos, $rechts, $y, $skripte)
+	EndIf
+EndFunc
+
+; Schildchen $t mit dem rechten Rand bei $rechts, Mitte $y; $y danach eine Zeile tiefer
+Func RandSchild(ByRef $pos, $rechts, ByRef $y, $t)
+	Local $n = UBound($pos)
+	ReDim $pos[$n + 1][4]
+	$pos[$n][0] = $rechts - SchildBreite($t)
+	$pos[$n][1] = $y
+	$pos[$n][2] = $t
+	$pos[$n][3] = -1
+	$y += 18
+EndFunc
+
+; False, wenn der Befehl aus [Aufrufe] erkennbar nichts bewirken kann oder ein eigenes Schildchen hat; ob ein Patient
+; geoeffnet ist oder er passende Markierungen hat, laesst sich hier nicht schnell genug feststellen und zaehlt nicht
+Func AufrufAnwendbar($b)
+	If $b = "Datum" Or $b = "Typ" Then Return False
+	If StringLeft($b, 7) = "Portal:" Then Return Einst(StringStripWS(StringTrimLeft($b, 7), 3), "Url", "") <> ""
+	If $b = "SmartPix" Or $b = "SmartPixListe" Then Return FileExists(Einst("SmartPix", "Programm", "C:\AccuChek\SPIXSW\Accu-Chek Smart Pix Software.exe")) <> 0
+	If $b = "Zucker" Then Return True
+	If $b = "Skripte" Then
+		For $i = 0 To UBound($gAufrufe) - 1
+			If StringLeft($gAufrufe[$i][3], 7) = "Portal:" And AufrufAnwendbar($gAufrufe[$i][3]) Then Return True
+		Next
+		Return False
+	EndIf
+	; Befehlszeile: Programm mit Pfad muss da sein; ohne Pfad sucht es Windows, das bleibt offen
+	Local $exe = AufrufProgramm($b)
+	Return Not StringInStr($exe, "\") Or FileExists($exe) <> 0
+EndFunc
+
+; Programm einer Befehlszeile: das in Anfuehrungszeichen, sonst das erste Wort
+Func AufrufProgramm($b)
+	Local $m = StringRegExp($b, "^\s*(?:""([^""]+)""|(\S+))", 1)
+	If @error Then Return ""
+	Return (UBound($m) > 1) ? $m[1] : $m[0]
+EndFunc
+
+; kurze Bezeichnung eines Befehls aus [Aufrufe] fuer das Schildchen (ausfuehrlich: AufrufBeschreibung)
+Func AufrufKurz($b)
+	Switch $b
+		Case "Skripte"
+			Return "Benutzerskripte einrichten"
+		Case "SmartPix"
+			Return "Smart Pix"
+		Case "SmartPixListe"
+			Return "Smart Pix-Abgleich"
+		Case "Zucker"
+			Return "Zuckerportale"
+	EndSwitch
+	If StringLeft($b, 7) = "Portal:" Then Return StringStripWS(StringTrimLeft($b, 7), 3)
+	If StringRegExp($b, "(?i)dateilese\.exe""?\s+plz\b") Then Return "Laufzettel"
+	If StringRegExp($b, "(?i)dateilese\.exe""?\s+nplz\b") Then Return "Laufzettel neu"
+	If StringRegExp($b, "(?i)dateilese\.exe""?\s+ab\b") Then Return "Arztbrief"
+	If StringRegExp($b, "(?i)dateilese\.exe""?\s+vonmo\b") Then Return ChrW(220) & "bertrag nach quelle"
+	If StringRegExp($b, "(?i)fcaufruf\.exe") Then Return "FreeCommander"
+	; sonst der Programmname ohne Pfad und Endung
+	Return StringRegExpReplace(AufrufProgramm($b), "^.*\\|\.[^.\\]*$", "")
+EndFunc
+
+; Schildchen "$titel" und darunter die Taste, die in [Aufrufe] den Befehl $befehl ausloest (keines, wenn abgeschaltet),
+; linksbuendig $dx Pixel vom linken Rand der Liste, oben buendig mit der ersten Zeile unter der Kopfzeile
+Func KarteiSuchPos(ByRef $pos, $g, $befehl, $titel, $dx)
+	For $i = 0 To UBound($gAufrufe) - 1
+		If $gAufrufe[$i][3] <> $befehl Then ContinueLoop
+		Local $n = UBound($pos)
+		ReDim $pos[$n + 1][4]
+		$pos[$n][0] = $g[0] + $dx
+		$pos[$n][1] = $g[1] + $KbKopfHoehe + 16
+		$pos[$n][2] = $titel & @LF & $gAufrufe[$i][0]
+		$pos[$n][3] = -1
+		Return
+	Next
 EndFunc
 
 ; Schildchen mitten auf den sichtbaren Knopf $h

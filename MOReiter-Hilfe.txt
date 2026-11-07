@@ -15,7 +15,14 @@ TASTEN-EINBLENDUNG
 ----------------------------------------------------------------------------------------------------
 Strg+Alt eine halbe Sekunde halten: bis zum Loslassen stehen gelbe Schildchen an allen Stellen im
 aktiven Fenster, auf die gerade eine Taste wirken würde (Reiter, Filter mit ihrer Nummer, Pfeil zum
-Hochladen, Karteikarte, Diagnose-Kurzwahlen, Tagesübersicht, Briefversand).
+Hochladen, Karteikarte, Diagnose-Kurzwahlen, Tagesübersicht, Briefversand). In der Karteikarte stehen
+unter den Spalten "Datum" und "Typ" auch "Gehe zu:" Strg+Umsch+G und "Suchen:" Strg+Umsch+F. Am rechten Rand
+stehen untereinander Strg+Alt+T (Termine kurz anzeigen) und Strg+Alt+M (Metforminplan), nach einer Leerzeile die
+Aufrufe externer Programme aus [Aufrufe] (Strg+P Laufzettel usw.), Strg+Alt+D (Explorer) und nach einer weiteren
+Leerzeile Strg+Umsch+T (Benutzerskripte einrichten). Die Aufrufe fehlen,
+solange der Cursor in einem Eingabefeld steht, sonst einzeln bei einem fehlenden Programm oder einem Portal ohne Url=;
+Strg+Alt+D fehlt, wenn der Ordner der Patientendokumente nicht erreichbar ist. Ob ein Patient geöffnet ist, wird dabei
+nicht geprüft.
 
 
 REITER (ANWENDERANSICHT) UND HAUPTFENSTER
