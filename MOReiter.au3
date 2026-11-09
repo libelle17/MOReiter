@@ -4803,6 +4803,52 @@ Func MOPatNr($nach, $vor, $geb)
 	Return $nr
 EndFunc
 
+; 9.11.26: Pat_id (patstamm.FSurogat) des in Medical Office geoeffneten Patienten, gelesen aus dem Titel des versteckten
+; MO-Fensters "Erinnerung - [<Pat_id>] Name, Vorname, Geburtsdatum (Alter)" (Klasse TFrmErinnerung) im selben Prozess
+; wie $hWnd: ohne Datenbank, ohne Tastendruck und ohne Mehrdeutigkeit bei Name und Geburtsdatum. MO aktualisiert den Titel
+; bei jedem Patientenwechsel (geprueft 9.11.26). 0, wenn nicht eindeutig feststellbar (dann wie bisher ueber die Personalien)
+Func MOOffenePatId($hWnd)
+	Local $pidMO = WinGetProcess($hWnd)
+	If $pidMO = -1 Then Return 0
+	Local $l = WinList("[CLASS:TFrmErinnerung]"), $nr = 0
+	For $i = 1 To $l[0][0]
+		If WinGetProcess($l[$i][1]) <> $pidMO Then ContinueLoop
+		Local $m = StringRegExp($l[$i][0], "\[(\d{1,9})\]", 1)
+		If @error Then ContinueLoop
+		If $nr = 0 Then
+			$nr = Int($m[0])
+		ElseIf $nr <> Int($m[0]) Then
+			Return 0
+		EndIf
+	Next
+	Return $nr
+EndFunc
+
+; 9.11.26: Nachname, Vorname und Geburtsdatum (TT.MM.JJJJ) zur Pat_id $nr aus Medical Office (patstamm); False bei Fehler
+Func MOPatDatenNr($nr, ByRef $nach, ByRef $vor, ByRef $geb)
+	Local $cn = DBVerbinden("medoff")
+	If @error Then Return False
+	$gComFehler = ""
+	Local $rs = $cn.Execute("SELECT FNachname, FVorname, DATE_FORMAT(FGeburtsdatum, '%d.%m.%Y') FROM patstamm WHERE FSurogat=" & Int($nr))
+	If $gComFehler <> "" Or Not IsObj($rs) Then
+		$cn.Close
+		Return False
+	EndIf
+	Local $n = "", $v = "", $g = "", $ok = Not $rs.EOF
+	If $ok Then
+		$n = StringStripWS($rs.Fields(0).Value, 3)
+		$v = StringStripWS($rs.Fields(1).Value, 3)
+		$g = String($rs.Fields(2).Value)
+	EndIf
+	$rs.Close
+	$cn.Close
+	If Not $ok Or $n = "" Or Not StringRegExp($g, "^\d\d\.\d\d\.\d{4}$") Then Return False
+	$nach = $n
+	$vor = $v
+	$geb = $g
+	Return True
+EndFunc
+
 ; ADODB-Verbindung zu "medoff" (Medical Office, Server wie bei Dateilese aus der Registry: MOServer, sonst MORes)
 ; oder "quelle" ([SmartPixListe] QuelleServer=, QuellePort=); Zugangsdaten [medoff] bzw. [quelle] uid=, pwd= aus
 ; der Zugang.ini von Dateilese ([Allgemein] Zugang=); bei Fehler @error und der Fehlertext
@@ -5319,15 +5365,20 @@ EndFunc
 ; Kennung;Nr;PC-Name;Art;Tage"; die Arbeit auf der Seite macht das Benutzerskript MOReiter-<Abschnitt>.user.js
 ; (Tampermonkey), das seinen Fortschritt im Seitentitel "MOR:Nr:Zustand" meldet.
 ; Strg+Alt+D: Explorer mit dem Dokumentenordner des Patienten (wie der Auftrag "Datei" im Krankenblatt, der
-; ExpAufruf.exe startet, aber ohne die turbcust.gdt; die Patientennummer kommt aus der Datenbank)
+; ExpAufruf.exe startet, aber ohne die turbcust.gdt; die Patientennummer kommt aus dem Erinnerung-Fenster von MO
+; (MOOffenePatId), sonst aus der Datenbank)
 Func Explorer()
 	Local $hMO = WinGetHandle($MOFenster)
 	If @error Then Return MOStarten()
 	If Not ModifierLos() Then Return Meldung("Strg und Alt bitte loslassen")
-	Local $nach, $vor, $geb
-	If Not PatientDaten($hMO, $nach, $vor, $geb) Then Return Meldung("Name und Geburtsdatum des Patienten nicht gefunden (Seite Personalien)")
-	Local $pid = MOPatNr($nach, $vor, $geb)
-	If @error Then Return Meldung("Patientennummer von " & $vor & " " & $nach & " nicht eindeutig (" & $pid & ")")
+	; 9.11.26: Pat_id direkt aus dem Erinnerung-Fenster von MO, sonst wie bisher ueber Name und Geburtsdatum
+	Local $pid = MOOffenePatId($hMO)
+	If $pid = 0 Then
+		Local $nach, $vor, $geb
+		If Not PatientDaten($hMO, $nach, $vor, $geb) Then Return Meldung("Name und Geburtsdatum des Patienten nicht gefunden (Seite Personalien)")
+		$pid = MOPatNr($nach, $vor, $geb)
+		If @error Then Return Meldung("Patientennummer von " & $vor & " " & $nach & " nicht eindeutig (" & $pid & ")")
+	EndIf
 	Local $vz = StringRegExpReplace(Einst("Dokumente", "Dok", "p:\dok"), "\\$", "") & "\" & $pid
 	If Not FileExists($vz) Then Return Meldung("Dokumentenordner " & $vz & " (noch) nicht vorhanden")
 	Local $alt = WinList("[CLASS:CabinetWClass]")
@@ -6355,6 +6406,9 @@ Func PatientDaten($hWnd, ByRef $nach, ByRef $vor, ByRef $geb)
 		Return True
 	EndIf
 	If PersonalienLesen($hWnd, $nach, $vor, $geb) Then Return True
+	; 9.11.26: sonst ueber die Pat_id aus dem versteckten Erinnerung-Fenster und die Datenbank, ohne F6 in MO
+	Local $nr = MOOffenePatId($hWnd)
+	If $nr > 0 And MOPatDatenNr($nr, $nach, $vor, $geb) Then Return True
 	WinActivate($hWnd)
 	If Not WinWaitActive($hWnd, "", 2) Then Return False
 	TasteEinspeisen(0x75, False) ; F6
@@ -7732,15 +7786,22 @@ EndFunc
 ; nicht erreichbar oder das Kuerzel dort ganz unbekannt ist (dann sucht Strg+Umsch+F nur am Bildschirm). Das
 ; Ergebnis gilt zwei Minuten (wiederholtes Strg+Umsch+F beim selben Patienten)
 Func TypEintraege($hWnd, $typ)
-	Local $nach, $vor, $geb
-	If Not PatientDaten($hWnd, $nach, $vor, $geb) Then Return SetError(1, 0, "Patient nicht gefunden")
-	Local $schluessel = $nach & ";" & $vor & ";" & $geb & ";" & $gTypArt & ":" & $typ
+	; 9.11.26: Pat_id zuerst aus dem Erinnerung-Fenster von MO, sonst wie bisher ueber Name und Geburtsdatum
+	Local $nach, $vor, $geb, $schluessel, $nr = MOOffenePatId($hWnd)
+	If $nr > 0 Then
+		$schluessel = "Nr" & $nr & ";" & $gTypArt & ":" & $typ
+	Else
+		If Not PatientDaten($hWnd, $nach, $vor, $geb) Then Return SetError(1, 0, "Patient nicht gefunden")
+		$schluessel = $nach & ";" & $vor & ";" & $geb & ";" & $gTypArt & ":" & $typ
+	EndIf
 	If $schluessel = $gTypCacheSchluessel And TimerDiff($gTypCacheZeit) < 120000 Then
 		$gTypPatNr = $gTypCacheNr
 		Return $gTypCache
 	EndIf
-	Local $nr = MOPatNr($nach, $vor, $geb)
-	If @error Then Return SetError(1, 0, "Patientennummer: " & $nr)
+	If $nr = 0 Then
+		$nr = MOPatNr($nach, $vor, $geb)
+		If @error Then Return SetError(1, 0, "Patientennummer: " & $nr)
+	EndIf
 	$gTypPatNr = Int($nr)
 	Local $arten = TypArtenFuer($typ), $bekannt = ($arten <> "")
 	Local $liste = ($arten = "") ? "0" : StringReplace(StringTrimLeft(StringTrimRight($arten, 1), 1), "|", ",")
