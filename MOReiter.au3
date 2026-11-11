@@ -9131,6 +9131,8 @@ Func FilterWahl($i)
 			Sleep(Int(Einst("Filter", "Warten", $defFilterWarten)))
 		EndIf
 	EndIf
+	; ein Suchtext der Anwenderansicht ("Suchtext" der Karteikarte) filterte auch die Liste des neuen Filters
+	If Einst("Allgemein", "SucheLeeren", "1") = "1" Then SucheLeeren($hWnd)
 	Local $unten = ($hier = "") ? FilterUnten($hWnd) : ($hier = "unten")
 	If $unten Then
 		Local $uy = 0

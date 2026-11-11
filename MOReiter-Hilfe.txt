@@ -30,7 +30,8 @@ REITER (ANWENDERANSICHT) UND HAUPTFENSTER
 mit anderen Namen). MOReiter findet ihre Reiter selbst, kann ihre Beschriftung aber nicht lesen: Es zählt von links,
 die Tasten wirken also auf die Position, nicht auf den Namen (1. = Krankenblatt, 2. = Kartei, 3. = ePA, 4. = ePAAbr;
 zu ändern unter [Krankenblatt] Nr= usw.). Beim Wechsel löscht MOReiter einen Suchtext im Suchfeld der verlassenen
-Ansicht (wie ein Klick aufs Kreuz daneben), damit die Liste beim Zurückkehren nicht mehr gefiltert ist.
+Ansicht (wie ein Klick aufs Kreuz daneben), damit die Liste beim Zurückkehren nicht mehr gefiltert ist; ebenso bei
+der Wahl eines Krankenblattfilters (Strg+Alt+Ziffer).
 ----------------------------------------------------------------------------------------------------
 Strg+Alt+L          1. Reiter (Anwenderansicht, z.B. "Krankenblatt")
 Strg+Alt+K          2. Reiter (z.B. "Kartei"); ist er schon aktiv: 1. Reiter
@@ -364,7 +365,7 @@ ein leerer Wert schaltet einen Eintrag der Vorgaben ab), dann aus MOReiter-Vorga
 Voreinstellungen aus dem Repo; fehlt sie, legt MOReiter die in die exe eingebettete Fassung wieder an), sonst
 gilt der eingebaute Wert. Alle drei haben denselben Aufbau; Kalibrieren schreibt nur in die eigene.
 [Allgemein]   EchteMaus=1        mit der echten Maus klicken statt per Fensternachricht
-              SucheLeeren=0      beim Reiterwechsel den Suchtext der verlassenen Ansicht stehen lassen
+              SucheLeeren=0      beim Reiterwechsel und bei der Filterwahl den Suchtext stehen lassen
               Einblendung=500    ms Halten bis zu den Schildchen, 0 = nie
               FolgeZeit=2000     ms Pause, nach der eine Ziffernfolge neu beginnt
               AltGrAbstand=50    RemotePC liefert AltGr als linke Strg + linke Alt mit Scancode 0x38 (echte
