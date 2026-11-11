@@ -9423,6 +9423,7 @@ Func Reiter($name)
 		$name = ReiterAktiv("ePA", $hWnd, $hCtrl) ? "ePAAbr" : "ePA"
 	EndIf
 	If Not HolPos($name, $x, $y) Then Return Meldung("Reiter """ & $name & """ nicht gefunden (so viele Anwenderansichten gibt es nicht)")
+	If Einst("Allgemein", "SucheLeeren", "1") = "1" Then SucheLeeren($hWnd)
 
 	If Einst("Allgemein", "EchteMaus", "0") = "1" Then
 		; Ausweichweg, falls das Control auf gepostete Mausnachrichten nicht reagiert
@@ -9437,6 +9438,23 @@ Func Reiter($name)
 		If Not ControlClick($hWnd, "", $hCtrl, "left", 1, $x, $y) Then Return Meldung("Klick fehlgeschlagen")
 	EndIf
 	Return True
+EndFunc
+
+; vor dem Reiterwechsel: steht im sichtbaren Suchfeld (z.B. "Suchtext" der Karteikarte) noch ein Suchtext, auf das
+; Kreuz rechts daneben klicken (per Nachricht, ~10 ms). Jede Anwenderansicht hat ihr eigenes Suchfeld
+; (TmoSearchEdit mit einem TAdvEdit darin, das Kreuz in den Pixeln rechts vom TAdvEdit); so ist jede beim
+; Verlassen leer und beim Zurueckkehren ungefiltert
+Func SucheLeeren($hWnd)
+	Local $liste = _WinAPI_EnumChildWindows($hWnd, True)
+	If Not IsArray($liste) Then Return
+	For $i = 1 To $liste[0][0]
+		If $liste[$i][1] <> "TmoSearchEdit" Then ContinueLoop
+		Local $hSuch = $liste[$i][0], $hEdit = _WinAPI_GetWindow($hSuch, 5) ; GW_CHILD
+		If Not $hEdit Or _WinAPI_GetWindowText($hEdit) = "" Then ContinueLoop
+		Local $p = WinGetPos($hSuch), $q = WinGetPos($hEdit)
+		If Not IsArray($p) Or Not IsArray($q) Or $p[2] - $q[2] < 8 Then ContinueLoop
+		ControlClick($hWnd, "", $hSuch, "left", 1, $p[2] - Int(($p[2] - $q[2]) / 2), Int($p[3] / 2))
+	Next
 EndFunc
 
 ; Stelle des Reiters $name relativ zur Reiterleiste: selbst kalibriert ([name] X, Y), sonst der wievielte Reiter
