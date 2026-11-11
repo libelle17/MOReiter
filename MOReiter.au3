@@ -9450,7 +9450,8 @@ Func SucheLeeren($hWnd)
 	For $i = 1 To $liste[0][0]
 		If $liste[$i][1] <> "TmoSearchEdit" Then ContinueLoop
 		Local $hSuch = $liste[$i][0], $hEdit = _WinAPI_GetWindow($hSuch, 5) ; GW_CHILD
-		If Not $hEdit Or _WinAPI_GetWindowText($hEdit) = "" Then ContinueLoop
+		; ControlGetText fragt per WM_GETTEXT; _WinAPI_GetWindowText liefert bei Fenstern fremder Prozesse nur leer
+		If Not $hEdit Or ControlGetText($hWnd, "", $hEdit) = "" Then ContinueLoop
 		Local $p = WinGetPos($hSuch), $q = WinGetPos($hEdit)
 		If Not IsArray($p) Or Not IsArray($q) Or $p[2] - $q[2] < 8 Then ContinueLoop
 		ControlClick($hWnd, "", $hSuch, "left", 1, $p[2] - Int(($p[2] - $q[2]) / 2), Int($p[3] / 2))
