@@ -61,7 +61,8 @@ Strg+Alt+Esc        MOReiter neu starten, z.B. wenn es in einer Aufgabe hängt u
 Strg+Alt+F1         diese Hilfe bzw. holt sie wieder nach vorn (die Hilfe von Medical Office selbst gibt es weiter mit Strg+F1)
 
 Strg+Alt+D          Explorer mit einem Dokumentenordner des Patienten (z.B. p:\dok\<Pat_id>), in jedem
-                    Fenster von Medical Office und ggf. im Patientenlaufzettel
+                    Fenster von Medical Office und ggf. im Patientenlaufzettel, in der Tagesübersicht mit
+                    dem Patienten der markierten Zeile
 Strg+Alt+M, dann P bzw. K
                     Metformin-Steigerungsplan für den aktuellen Patienten: erst fragt ein Fenster
                     "Therapiebeginn" das Datum ab (Vorgabe heute; Enter bestätigt, Esc bricht ab), die
@@ -117,6 +118,11 @@ Alt+Pfeil hoch/runter
                     in der Bereichsauswahl links den Eintrag über bzw. unter dem gelb umrandeten
                     anklicken, danach rechts die oberste Zeile der Liste; Alt darf für mehrere Schritte
                     gehalten bleiben
+Strg+P, Strg+Umsch+P, Strg+A, Strg+Ü, Strg+I, Strg+O usw.
+                    die Aufrufe aus [Aufrufe] mit {pat} und die Portale (z.B. Laufzettel, Laufzettel neu,
+                    Arztbrief, FreeCommander, Onlinebefunde) mit dem Patienten der markierten Zeile
+Strg+Alt+D          Explorer mit dem Dokumentenordner (p:\dok\<Pat_id>) des Patienten der markierten Zeile
+Beim Halten von Strg+Alt stehen diese Aufrufe und Strg+Alt+D am rechten Rand.
 
 
 BRIEFVERSAND (Fenster "MEDICAL OFFICE - Briefversand")
@@ -186,9 +192,10 @@ fehlgeschlagen, Patient nicht gefunden, keine Verbindung zu Medical Office).
 LABOR (Strg+O, im Laufzettel Alt+O; Zusatzfunktion, Beispiel Onlinebefunde Labor Staber im Firefox)
 ----------------------------------------------------------------------------------------------------
 Nur eingeschaltet mit [Labor] Url=<Adresse der Patientensuche des Portals> in der INI.
-Liest Nachname, Vorname und Geburtsdatum des geöffneten Patienten aus Medical Office (im
-Patientenlaufzettel mit Alt+O die des Laufzettel-Patienten), wählt im Firefox
-den Tab mit onlinebefunde.labor-staber.de (oder öffnet ihn), meldet sich an (Passwort aus dem
+Liest Nachname, Vorname und Geburtsdatum des geöffneten Patienten aus Medical Office (in der
+Tagesübersicht die der markierten Zeile, im Patientenlaufzettel mit Alt+O die des
+Laufzettel-Patienten), wählt im Firefox den Tab mit onlinebefunde.labor-staber.de (oder öffnet
+ihn), meldet sich an (Passwort aus dem
 Firefox-Kennwortspeicher), sucht den Patienten, nimmt den ersten Treffer mit passendem Geburtsdatum
 und zeigt dessen ersten Befund. Ohne passendes Geburtsdatum bleibt die Suchliste stehen.
 Einmalig einrichten: Fehlt im Firefox das Add-on "Tampermonkey", bietet MOReiter es beim ersten

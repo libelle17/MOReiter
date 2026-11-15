@@ -27,7 +27,8 @@
 ;            Strg+Alt+F1       bildschirmfuellende Hilfe (Text aus MOReiter-Hilfe.txt, in die exe eingebettet),
 ;                              Esc oder nochmals Strg+Alt+F1 schliesst sie (MO-Hilfe weiter mit Strg+F1)
 ;            Strg+Alt+D        Explorer mit dem Dokumentenordner des Patienten (p:\dok\<Pat_id>), in jedem
-;                              Fenster von Medical Office (sonst nur der Auftrag im Krankenblatt)
+;                              Fenster von Medical Office (sonst nur der Auftrag im Krankenblatt), auch in der
+;                              Tagesuebersicht mit dem Patienten der markierten Zeile
 ;            Strg+Alt+Z        Liste der zuletzt geoeffneten Patienten (Pfeil rechts neben der Patientensuche)
 ;            Strg+Alt+Leertaste  Hauptmenue (drei Striche links oben)
 ;            Strg+Alt+H        in der markierten Zeile der Krankenblatt-Liste den hellblauen Pfeil nach
@@ -39,7 +40,7 @@
 ;                              ersten Zeile ab diesem Tag (Datumsspalte per Texterkennung) und klickt sie an
 ;            Strg+Umsch+F      ([Aufrufe] Strg+Umsch+F=Typ) Karteikarte: fragt ein Typ-Kuerzel ab und springt zum
 ;                              naechstaelteren Eintrag dieses Typs (Datenbank, Spalte "Typ" per Texterkennung)
-;            Strg+P, Strg+Umsch+P, Strg+A, Strg+I (alle [Aufrufe] mit {pat}) auch in der Tagesuebersicht, mit
+;            Strg+P, Strg+Umsch+P, Strg+A, Strg+I, Strg+O (alle [Aufrufe] mit {pat} oder Portal:) auch in der Tagesuebersicht, mit
 ;                              dem Patienten der markierten Zeile (aus der Statuszeile unten links)
 ;            Strg+Ue           ([Aufrufe] Strg+Ue=...Dateilese.exe vonmo {pat}) Einzeluebertrag des Patienten von
 ;                              Medical Office (medoff) nach quelle; meldet, wenn Dateilese damit fertig ist
@@ -84,7 +85,9 @@
 ;                              Hochladen-Pfeil der markierten Zeile, an den Filtern der Kartei die
 ;                              Ziffernblock-Nummer und dahinter die direkte Taste, wenn sie anders heisst
 ;                              (z.B. "0 ^", "5", "11 sz"); Diagnoseerfassung: ebenso an den Kurzwahlen;
-;                              Tagesuebersicht: A in der markierten Zeile, Alt+Pfeil an den Bereichen;
+;                              Tagesuebersicht: A in der markierten Zeile, Alt+Pfeil an den Bereichen,
+;                              am rechten Rand die dort wirksamen Aufrufe ({pat} und Portal:, z.B. Strg+P, Strg+O)
+;                              und Strg+Alt+D;
 ;                              Briefversand: die Buchstaben an den Klickstellen
 ;            Die Tasten werden per Tastatur-Hook abgefangen (nicht per HotKeySet), weil nur so linkes Alt
 ;            von AltGr unterschieden werden kann: AltGr kommt als linke Strg + rechte Alt an und bleibt
@@ -317,6 +320,8 @@ Global $gOffenZuletzt = -1
 Global $gAblagen[0][10], $gAblagenGeprueft = 0
 ; Patientennummer des laufenden Portal-Abrufs, falls schon bekannt (Laufzettel-Link)
 Global $gPortalPid = ""
+; Patientennummer, die TagesPatient zuletzt erfolgreich aus der Statuszeile der Tagesuebersicht gelesen hat (fuer Strg+Alt+D)
+Global $gTagesPatNr = 0
 ; Aenderungsmeldung von Windows fuer den Download-Ordner (FindFirstChangeNotification) und dessen Pfad: der Ordner
 ; wird nur gelesen, wenn sich darin etwas getan hat. Das Lesen haelt die Hauptschleife auf; dauert es (Ordner auf
 ; dem Server, viele Dateien) zu lange, haengt Windows den Tastatur-Hook ab, und alle 2 s gelesen blieb MOReiter
@@ -570,9 +575,9 @@ Func HookAufgabe($vk)
 				If $mo And Not $text Then Return "Aufruf:" & $i
 				; Strg+Umsch+G=Datum und Strg+Umsch+F=Typ auch aus einem Eingabefeld (z.B. "Suchtext" der Karteikarte, wo der Cursor oft steht)
 				If $mo And ($gAufrufe[$i][3] = "Datum" Or $gAufrufe[$i][3] = "Typ") Then Return "Aufruf:" & $i
-				; Befehlszeilen mit {pat} (Laufzettel, FreeCommander ...) auch in der Tagesuebersicht, mit dem
-				; Patienten der markierten Zeile (aus der Statuszeile)
-				If StringInStr($gAufrufe[$i][3], "{pat}") And TagesAktiv() Then Return "Aufruf:" & $i
+				; Befehlszeilen mit {pat} (Laufzettel, FreeCommander ...) und Portale (Strg+O Onlinebefunde ...) auch
+				; in der Tagesuebersicht, mit dem Patienten der markierten Zeile (aus der Statuszeile)
+				If TagesAufruf($gAufrufe[$i][3]) And TagesAktiv() Then Return "Aufruf:" & $i
 				; Strg+S auch in der Patientenliste von Smart Pix (Geburtsdatum nachtragen)
 				If $gAufrufe[$i][3] = "SmartPix" And SmartPixListeAktiv() Then Return "Aufruf:" & $i
 				ExitLoop
@@ -603,7 +608,7 @@ Func HookAufgabe($vk)
 		Case 0x54 ; T
 			Return $kalib ? "" : "Termine"
 		Case 0x44 ; D, nur in Medical Office (Strg+Alt+Umsch+D ist oben die Fensterliste)
-			Return MOAktiv() ? "Explorer" : ""
+			Return (MOAktiv() Or TagesAktiv()) ? "Explorer" : ""
 		Case 0x70 ; F1
 			Return $kalib ? "" : "Hilfe"
 		Case 0x5A ; Z
@@ -1015,13 +1020,30 @@ Func KnopfPos(ByRef $pos, $h, $text)
 	PosDazu($pos, $p[0] + Int($p[2] / 2), $p[1] + Int($p[3] / 2), $text)
 EndFunc
 
-; Tagesuebersicht: A in der markierten Zeile (Spalte Bereich, nur bei "Offene To-Dos") und
-; Alt+Pfeil an den Eintraegen der Bereichsauswahl, die Alt+Pfeil hoch bzw. runter waehlen wuerde
+; wirkt der Befehl aus [Aufrufe] auch in der Tagesuebersicht (mit dem Patienten der markierten Zeile)?
+; Befehlszeilen mit {pat} (Laufzettel, Arztbrief, FreeCommander ...) und Portale (Strg+O Onlinebefunde ...)
+Func TagesAufruf($b)
+	Return StringInStr($b, "{pat}") > 0 Or StringLeft($b, 7) = "Portal:"
+EndFunc
+
+; Tagesuebersicht: A in der markierten Zeile (Spalte Bereich, nur bei "Offene To-Dos"),
+; Alt+Pfeil an den Eintraegen der Bereichsauswahl, die Alt+Pfeil hoch bzw. runter waehlen wuerde, und
+; am rechten Rand die Aufrufe aus [Aufrufe], die hier wirken (s. TagesAufruf), und Strg+Alt+D
 Func TagesPositionen($hWnd, ByRef $pos)
 	Local $hGrid = ControlGetHandle($hWnd, "", "[CLASS:TNewStringGrid; INSTANCE:1]")
 	If @error Then Return
 	Local $g = WinGetPos($hGrid)
 	If @error Then Return
+	Local $f = WinGetPos($hWnd)
+	If Not @error Then
+		Local $rechts = $f[0] + $f[2] - 18, $y = $g[1] + 30, $unten = $f[1] + $f[3] - 18
+		For $i = 0 To UBound($gAufrufe) - 1
+			If $y > $unten Then ExitLoop
+			If Not TagesAufruf($gAufrufe[$i][3]) Or Not AufrufAnwendbar($gAufrufe[$i][3]) Then ContinueLoop
+			RandSchild($pos, $rechts, $y, $gAufrufe[$i][0] & " " & AufrufKurz($gAufrufe[$i][3]))
+		Next
+		If $y <= $unten And FileExists(Einst("Dokumente", "Dok", "p:\dok")) Then RandSchild($pos, $rechts, $y, "Strg+Alt+D Explorer")
+	EndIf
 	Opt("PixelCoordMode", 1)
 	If OffeneToDos($hWnd) Then
 		Local $mitte = MarkierteZeile($g)
@@ -5366,13 +5388,20 @@ EndFunc
 ; (Tampermonkey), das seinen Fortschritt im Seitentitel "MOR:Nr:Zustand" meldet.
 ; Strg+Alt+D: Explorer mit dem Dokumentenordner des Patienten (wie der Auftrag "Datei" im Krankenblatt, der
 ; ExpAufruf.exe startet, aber ohne die turbcust.gdt; die Patientennummer kommt aus dem Erinnerung-Fenster von MO
-; (MOOffenePatId), sonst aus der Datenbank)
+; (MOOffenePatId), sonst aus der Datenbank; in der Tagesuebersicht die des Patienten der markierten Zeile)
 Func Explorer()
 	Local $hMO = WinGetHandle($MOFenster)
 	If @error Then Return MOStarten()
 	If Not ModifierLos() Then Return Meldung("Strg und Alt bitte loslassen")
-	; 9.11.26: Pat_id direkt aus dem Erinnerung-Fenster von MO, sonst wie bisher ueber Name und Geburtsdatum
-	Local $pid = MOOffenePatId($hMO)
+	Local $pid = 0
+	If TagesAktiv() Then
+		Local $tn, $tv, $tg, $tfehler = TagesPatient($tn, $tv, $tg)
+		If $tfehler <> "" Then Return Meldung($tfehler)
+		$pid = $gTagesPatNr
+	Else
+		; 9.11.26: Pat_id direkt aus dem Erinnerung-Fenster von MO, sonst wie bisher ueber Name und Geburtsdatum
+		$pid = MOOffenePatId($hMO)
+	EndIf
 	If $pid = 0 Then
 		Local $nach, $vor, $geb
 		If Not PatientDaten($hMO, $nach, $vor, $geb) Then Return Meldung("Name und Geburtsdatum des Patienten nicht gefunden (Seite Personalien)")
@@ -5422,7 +5451,13 @@ Func Portal($s)
 	If @error And Not $gLink Then Return MOStarten()
 	If Not ModifierLos() Then Return Meldung("Strg und Alt bitte loslassen")
 	Local $nach, $vor, $geb
-	If Not PatientDaten($hMO, $nach, $vor, $geb) Then Return Meldung("Name und Geburtsdatum des Patienten nicht gefunden (Seite Personalien)")
+	If Not $gLink And TagesAktiv() Then
+		; aus der Tagesuebersicht: Patient der markierten Zeile
+		Local $tfehler = TagesPatient($nach, $vor, $geb)
+		If $tfehler <> "" Then Return Meldung($tfehler)
+	ElseIf Not PatientDaten($hMO, $nach, $vor, $geb) Then
+		Return Meldung("Name und Geburtsdatum des Patienten nicht gefunden (Seite Personalien)")
+	EndIf
 	; beim ersten Mal auf dem PC: Tampermonkey und das Benutzerskript gleich einrichten, ohne erst
 	; vergeblich auf eine Antwort zu warten; danach geht es mit dem Auftrag weiter
 	If Not TampermonkeyDa() Then
@@ -8512,6 +8547,7 @@ Func TagesPatient(ByRef $nach, ByRef $vor, ByRef $geb)
 	If Not $gefunden Then Return "Tagesuebersicht: Patient Nr. " & $nr & " (so erkannt) gibt es nicht"
 	If $geb <> $gebErk Then Return "Tagesuebersicht: Nr. " & $nr & " ist " & $vor & " " & $nach & " (" & $geb & _
 			"), erkannt wurde aber Geburtsdatum " & $gebErk & "; zur Sicherheit nichts gestartet"
+	$gTagesPatNr = Int($nr)
 	Return ""
 EndFunc
 
