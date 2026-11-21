@@ -17,7 +17,7 @@ Strg+Alt eine halbe Sekunde halten: bis zum Loslassen stehen gelbe Schildchen an
 aktiven Fenster, auf die gerade eine Taste wirken würde (Reiter, Filter mit ihrer Nummer, Pfeil zum
 Hochladen, Karteikarte, Diagnose-Kurzwahlen, Tagesübersicht, Briefversand). In der Karteikarte stehen
 unter den Spalten "Datum" und "Typ" auch "Gehe zu:" Strg+Umsch+G und "Suchen:" Strg+Umsch+F. Am rechten Rand
-stehen untereinander Strg+Alt+T (Termine kurz anzeigen) und Strg+Alt+M (Metforminplan), nach einer Leerzeile die
+stehen untereinander Strg+Alt+T (Termine kurz anzeigen), Strg+Alt+M (Metforminplan) und Strg+Alt+B, M (BMI), nach einer Leerzeile die
 Aufrufe externer Programme aus [Aufrufe] (Strg+P Laufzettel usw.), Strg+Alt+D (Explorer) und nach einer weiteren
 Leerzeile Strg+Umsch+T (Benutzerskripte einrichten). Die Aufrufe fehlen,
 solange der Cursor in einem Eingabefeld steht, sonst einzeln bei einem fehlenden Programm oder einem Portal ohne Url=;
@@ -74,6 +74,12 @@ Strg+Alt+M, dann P bzw. K
                     K: nur rabattierte, Kassenrezept (bei Privatpatienten bleibt es beim Privatrezept),
                     Grund "Zucker"; die Zeilen 2-4 als Fremdverordnung; zuletzt F2 (speichern).
                     Esc bricht ab; geht etwas nicht wie erwartet, hält MOReiter mit einer Meldung an
+Strg+Alt+B, dann M  BMI des geöffneten Patienten nach dem jüngsten Gewicht, dazu die zugrundegelegte Größe,
+                    das Gewicht, das Datum beider und woher sie stammen (15 s lang an der Maus, [BMI] Anzeige=ms).
+                    Gewicht und Größe kommen zuerst aus quelle (Einträge gew, gr, sonst Anamnesebogen, z.B.
+                    alte Papieranamnesen), was dort fehlt, aus Medical Office (Messwerte "Gewicht", "Größe",
+                    "Körpergröße", auch aus Laboraufträgen, und die Kategorien gew bzw. groe);
+                    unplausible Werte werden übergangen. Esc nach Strg+Alt+B bricht ab
 b, e               schnell nacheinander (innerhalb 0,6 s) in der Liste der Karteikarte: Arztbrief einfügen.
                     Im offenen Word-Fenster mit dem jüngsten Arztbrief des geöffneten Patienten (Titel
                     "..., PID <Pat_id>, Arztbrief vom TT.MM.JJ hhmmss ...", wie ihn Dateilese anlegt) wird
@@ -440,6 +446,7 @@ gilt der eingebaute Wert. Alle drei haben denselben Aufbau; Kalibrieren schreibt
 [Editor]           Warten=350   ms nach Ctrl+S, bis ein noch offener Editor geschlossen wird
 [Metformin]        Filter=3     Nummer des Filters Medplan (wie Strg+Alt+3); Warten=1000 ms nach dem
                    Öffnen des Dosierplans; SuchWarten=5000 ms auf das Suchergebnis im Katalog
+[BMI]              Anzeige=15000 ms, so lange steht die Anzeige von Strg+Alt+B, M
 [BriefEinfuegen]   Folge=be (zwei Buchstaben, leer = aus), Zeit=600 ms zwischen beiden; Kuerzel=qea der
                    Vorlage; Warten=10000 ms auf das Brieffenster, Pause=500 ms vor und nach dem Einfügen;
                    Fenster=TDocumentForm Klasse des Brieffensters (sonst eins mit Textfeld TWPRichText)

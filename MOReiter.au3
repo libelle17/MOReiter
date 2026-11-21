@@ -115,6 +115,9 @@
 ;                              eine Woche, mit "(nach dem Essen)"; P: Privatrezept, nicht nur rabattierte, Grund
 ;                              "Stoffwechsel"; K: Kassenrezept, nur rabattierte, Grund "Zucker"; Zeilen 2-4 als
 ;                              Fremdverordnung; zuletzt F2), Esc bricht ab
+;            Strg+Alt+B, dann M  in Medical Office: BMI des geoeffneten Patienten nach dem juengsten Gewicht, dazu
+;                              Groesse, Gewicht und deren Datum (BMIAnzeigen): zuerst aus quelle (eintraege, sonst
+;                              anamnesebogen), was dort fehlt, aus Medical Office (ltag, FICdcode GEW/GR, Kategorien gew/groe)
 ;            b, e              schnell nacheinander in der Liste der Karteikarte ([BriefEinfuegen] Folge=, Zeit=600 ms):
 ;                              im offenen Word-Fenster mit dem juengsten Arztbrief des geoeffneten Patienten ("PID n,
 ;                              Arztbrief vom TT.MM.JJ hhmmss" im Titel) alles markieren und kopieren, in MO einen Brief
@@ -204,6 +207,10 @@ Const $EditorKlasse = "TDocumentForm", $defEditorWarten = 350
 Const $KatalogKlasse = "TAMISForm", $PlanKlasse = "TDosierplanForm", $VerordnenKlasse = "TfrmMedVerordnung"
 Const $MetWartenMs = 5000, $defMetFilter = 3, $defMetWarten = 1000, $defMetSuchWarten = 5000
 Global $gMetWarten = 0, $gMetAnzeige = False
+; 21.11.26: Strg+Alt+B, dann M (BMI): Beginn des Wartens auf die zweite Taste (0 = keins, Dauer wie $MetWartenMs), ob
+; dessen Hinweis steht; wie lange die BMI-Anzeige stehen bleibt ([BMI] Anzeige=ms)
+Global $gBWarten = 0, $gBAnzeige = False
+Const $defBMIAnzeige = 15000
 ; Therapiebeginn (JJJJ/MM/TT), aus dem Fenster "Therapiebeginn" (MetBeginn)
 Global $gMetBeginn = ""
 ; zuletzt gesehenes Vordergrundfenster (EditorNachVorn prueft nur bei einem Wechsel)
@@ -426,6 +433,12 @@ While 1
 		$gMetAnzeige = False
 		ToolTip("")
 	EndIf
+	; Strg+Alt+B ohne M: Hinweis wieder weg
+	If $gBAnzeige And (Not $gBWarten Or TimerDiff($gBWarten) >= $MetWartenMs) Then
+		$gBWarten = 0
+		$gBAnzeige = False
+		ToolTip("")
+	EndIf
 	TasteADurchPruefen()
 	If $gProtokoll <> "" Then ProtokollSchreiben()
 	If UBound($gAblagen) And TimerDiff($gAblagenGeprueft) > 2000 Then AblagenPruefen()
@@ -572,8 +585,20 @@ Func TastenHook($nCode, $wParam, $lParam)
 					Return 1
 				EndIf
 			EndIf
+			; nach Strg+Alt+B waehlt die naechste Taste: M BMI, Esc bricht ab, jede andere beendet das Warten
+			; (Strg+Alt duerfen dabei gehalten bleiben, Strg+Alt+M ist dann nicht der Metforminplan)
+			If $gBWarten And Not (($vk >= 0x10 And $vk <= 0x12) Or ($vk >= 0xA0 And $vk <= 0xA5)) Then
+				Local $bWarte = TimerDiff($gBWarten) < $MetWartenMs
+				$gBWarten = 0
+				If $bWarte And ($vk = 0x4D Or $vk = 0x1B) Then
+					If Not StringInStr($gUnten, "," & $vk & ",") Then $gUnten &= "," & $vk & ","
+					$gAufgabe = ($vk = 0x1B) ? "BWahl:Abbruch" : "BMI"
+					Return 1
+				EndIf
+			EndIf
 			Local $aufgabe = HookAufgabe($vk)
 			If $aufgabe = "MetforminWahl" Then $gMetWarten = TimerInit()
+			If $aufgabe = "BWahl" Then $gBWarten = TimerInit()
 			; Strg, Alt, Umsch selbst nicht, sonst stuende beim Neustart nur das Druecken von Strg+Alt da
 			If Not (($vk >= 0x10 And $vk <= 0x12) Or ($vk >= 0xA0 And $vk <= 0xA5)) Then $gHookLetzte = "Taste " & Hex($vk, 2) & " -> """ & $aufgabe & """, " & BriefTastenStand() & ", LosGemeldet " & $gLosGemeldet
 			If $aufgabe <> "" Then
@@ -655,6 +680,8 @@ Func HookAufgabe($vk)
 			Return $kalib ? "" : "Menue"
 		Case 0x4D ; M, nur in Medical Office: Metforminplan, P bzw. K folgt
 			Return ($kalib Or Not MOAktiv()) ? "" : "MetforminWahl"
+		Case 0x42 ; B, nur in Medical Office: M (BMI) folgt
+			Return ($kalib Or Not MOAktiv()) ? "" : "BWahl"
 	EndSwitch
 	For $i = 0 To UBound($FilterTasten) - 1
 		If $vk <> $FilterTasten[$i] Then ContinueLoop
@@ -956,6 +983,7 @@ Func AufrufPositionen($hWnd, ByRef $pos)
 	Local $rechts = $f[0] + $f[2] - 18, $unten = $f[1] + $f[3] - 18
 	RandSchild($pos, $rechts, $y, "Strg+Alt+T Termine kurz anzeigen")
 	RandSchild($pos, $rechts, $y, "Strg+Alt+M Metforminplan")
+	RandSchild($pos, $rechts, $y, "Strg+Alt+B, M BMI")
 	$y += 18
 	Local $skripte = ""
 	If Not TextFokus() Then
@@ -1184,6 +1212,20 @@ Func Ausfuehren($aufgabe)
 	If StringLeft($aufgabe, 10) = "Metformin:" Then
 		$gMetAnzeige = False
 		Return MetforminPlan(StringTrimLeft($aufgabe, 10) = "k")
+	EndIf
+	If $aufgabe = "BWahl" Then
+		$gBAnzeige = True
+		HinweisStehend("Strg+Alt+B: M = BMI, Esc = abbrechen")
+		Return True
+	EndIf
+	If $aufgabe = "BWahl:Abbruch" Then
+		$gBAnzeige = False
+		HinweisWeg()
+		Return True
+	EndIf
+	If $aufgabe = "BMI" Then
+		$gBAnzeige = False
+		Return BMIAnzeigen()
 	EndIf
 	If $aufgabe = "Katalog:Wirkstaerke" Then Return KatalogWirkstaerke()
 	If $aufgabe = "BriefEinfuegen" Then Return BriefEinfuegen()
@@ -5049,6 +5091,129 @@ Func MOPatDatenNr($nr, ByRef $nach, ByRef $vor, ByRef $geb)
 	$vor = $v
 	$geb = $g
 	Return True
+EndFunc
+
+; 21.11.26: Strg+Alt+B, M: BMI des in Medical Office geoeffneten Patienten nach dem juengsten Gewicht, dazu die
+; zugrundegelegte Groesse, das Gewicht und das Datum beider. Erste Wahl ist quelle (bis auf alte Anamnesebogen-Eintraege,
+; Papieranamnesen bis ca. 2007, aus Medical Office uebertragen, aber schneller als das Einlesen der Kategorien aus
+; mosystem), gelesen wie in Dateilese (ErmittleDMP): eintraege Art gew/gw/gewi..., Groesse GR bzw. GROESSE, sonst
+; anamnesebogen Gewicht bzw. Groesse. Was dort fehlt (z.B. noch nicht uebertragen), aus Medical Office: ltag wie in
+; BMIArten (FICdcode GEW bzw. GR gleich welcher Eintragsart, auch aus dem Laborauftrag, FEintragsart 7, und die
+; Kategorien gew bzw. groe; Zahl aus FText wie "Gewicht: 97,0 kg", "97,3 kg", "Koerpergroesse: 1,7 m 1,70",
+; "Groesse: 1,84 m"). Die Pat_id ist in beiden die Patientennummer von Medical Office (Dateilese: setzPid). Unplausible Werte
+; (Gewicht ausserhalb 20-350 kg, Groesse ausserhalb 1,00-2,30 m) werden uebergangen, dann gilt der naechstaeltere
+Func BMIAnzeigen()
+	Local $hMO = WinGetHandle($MOFenster)
+	If @error Then Return Meldung("Medical Office nicht gefunden")
+	Local $nr = MOOffenePatId($hMO)
+	If Not $nr Then
+		Local $nach, $vor, $geb
+		If Not PatientDaten($hMO, $nach, $vor, $geb) Then Return Meldung("BMI: kein Patient ge" & ChrW(246) & "ffnet")
+		$nr = MOPatNr($nach, $vor, $geb)
+		If @error Then Return Meldung("BMI: Patientennummer nicht feststellbar (" & $nr & ")")
+	EndIf
+	$nr = Int($nr)
+	HinweisStehend("BMI von Pat. " & $nr & " wird ermittelt ...")
+	; je [Wert, Datum TT.MM.JJJJ, Herkunft]
+	Local $gew[3] = [0, "", ""], $gr[3] = [0, "", ""], $fehler = ""
+	Local $cn = DBVerbinden("quelle")
+	If @error Then
+		$fehler &= @CRLF & "quelle: " & $cn
+	Else
+		Local $gross = "Gr" & ChrW(246) & ChrW(223) & "e"
+		BMISuche($cn, "SELECT CAST(Inhalt AS CHAR), DATE_FORMAT(zeitpunkt, '%d.%m.%Y') FROM eintraege WHERE pat_id=" & $nr & _
+				" AND Art RLIKE '^(gew|gw)$|^gewi' ORDER BY zeitpunkt DESC LIMIT 50", False, "quelle", $gew, $fehler)
+		If $gew[0] = 0 Then BMISuche($cn, "SELECT CAST(Gewicht AS CHAR), DATE_FORMAT(AktZeit, '%d.%m.%Y') FROM anamnesebogen WHERE Pat_ID=" & $nr & _
+				" AND Gewicht>0 ORDER BY AktZeit DESC LIMIT 10", False, "quelle, Anamnesebogen", $gew, $fehler)
+		BMISuche($cn, "SELECT CAST(Inhalt AS CHAR), DATE_FORMAT(zeitpunkt, '%d.%m.%Y') FROM eintraege WHERE pat_id=" & $nr & _
+				" AND Art IN ('GR', 'GR" & ChrW(214) & "SSE', 'GROESSE') ORDER BY zeitpunkt DESC LIMIT 50", True, "quelle", $gr, $fehler)
+		If $gr[0] = 0 Then BMISuche($cn, "SELECT CAST(`" & $gross & "` AS CHAR), DATE_FORMAT(AktZeit, '%d.%m.%Y') FROM anamnesebogen WHERE Pat_ID=" & $nr & _
+				" AND `" & $gross & "`>0 ORDER BY AktZeit DESC LIMIT 10", True, "quelle, Anamnesebogen", $gr, $fehler)
+		$cn.Close
+	EndIf
+	; Medical Office nur fuer das, was in quelle fehlt (BMIArten liest beim ersten Mal die Kategorien aus mosystem, dauert)
+	If $gew[0] = 0 Or $gr[0] = 0 Then
+		$cn = DBVerbinden("medoff")
+		If @error Then
+			$fehler &= @CRLF & "Medical Office: " & $cn
+		Else
+			Local $mo = "Medical Office", $tag = "DATE_FORMAT(DATE('1890-01-01') + INTERVAL FDatum DAY, '%d.%m.%Y')"
+			Local $sel = "SELECT CAST(FText AS CHAR), " & $tag & " FROM ltag WHERE FPatnr=" & $nr & " AND "
+			Local $ord = " ORDER BY FDatum DESC, FZeit DESC, FSurogat DESC LIMIT 50"
+			If $gew[0] = 0 Then BMISuche($cn, $sel & BMIArten("GEW", "gew") & $ord, False, $mo, $gew, $fehler)
+			If $gr[0] = 0 Then BMISuche($cn, $sel & BMIArten("GR", "groe") & $ord, True, $mo, $gr, $fehler)
+			$cn.Close
+		EndIf
+	EndIf
+	Local $txt = "", $ms = Int(Einst("BMI", "Anzeige", $defBMIAnzeige))
+	If $gew[0] > 0 And $gr[0] > 0 Then
+		Local $bmi = $gew[0] / ($gr[0] / 100) ^ 2
+		$txt = "BMI " & BMIKomma($bmi, 1) & " kg/m" & ChrW(178) & " (" & BMIKlasse($bmi) & ")" & @CRLF
+	Else
+		$txt = "BMI nicht berechenbar" & @CRLF
+	EndIf
+	$txt &= "Gewicht: " & (($gew[0] > 0) ? BMIKomma($gew[0], 1) & " kg vom " & $gew[1] & " (" & $gew[2] & ")" : "nicht gefunden") & @CRLF
+	$txt &= "Gr" & ChrW(246) & ChrW(223) & "e: " & (($gr[0] > 0) ? BMIKomma($gr[0] / 100, 2) & " m vom " & $gr[1] & " (" & $gr[2] & ")" : "nicht gefunden")
+	; Verbindungsfehler nur zeigen, wenn deswegen etwas fehlt
+	If ($gew[0] = 0 Or $gr[0] = 0) And $fehler <> "" Then $txt &= @CRLF & $fehler
+	ToolTip($txt, Default, Default, "MOReiter: Pat. " & $nr)
+	AdlibRegister("HinweisWeg", $ms)
+	Return $gew[0] > 0 And $gr[0] > 0
+EndFunc
+
+; Bedingung fuer die ltag-Zeilen eines Messwerts wie in Dateilese (doPatvonMO): Kuerzel $code in FICdcode (Messwert,
+; Laborauftrag), "gew#gew" in FICdcode bzw. "gew#gew:" am Anfang von FText (nach Datenuebertragung) oder die
+; Eintragsart der selbst definierten Kategorie $kat aus mosystem (TypArten; gew = Text - Gewicht, groe = Groesse)
+Func BMIArten($code, $kat)
+	Local $arten = TypArten($kat), $b = "(FICdcode IN ('" & $code & "', '" & $kat & "#" & $kat & "') OR FText LIKE '" & $kat & "#" & $kat & ":%'"
+	If $arten <> "" Then $b &= " OR FEintragsart IN (" & StringReplace(StringTrimLeft(StringTrimRight($arten, 1), 1), "|", ",") & ")"
+	Return $b & ")"
+EndFunc
+
+; erster plausibler Wert aus der Abfrage $sql (Spalten: Text mit der Zahl, Datum) nach $erg ([Wert, Datum, Herkunft]);
+; $groesse: Wert in cm (unter 3 als m gelesen), sonst Gewicht in kg; Abfragefehler haengen sich an $fehler
+Func BMISuche($cn, $sql, $groesse, $herkunft, ByRef $erg, ByRef $fehler)
+	$gComFehler = ""
+	Local $rs = $cn.Execute($sql)
+	If $gComFehler <> "" Or Not IsObj($rs) Then
+		$fehler &= @CRLF & $herkunft & ": Abfrage fehlgeschlagen: " & $gComFehler
+		Return False
+	EndIf
+	Local $gefunden = False
+	While Not $rs.EOF
+		; in der Kategorie Gewicht steht vereinzelt ein Bauchumfang ("110 cm"), umgekehrt kein Gewicht als Groesse
+		Local $t = String($rs.Fields(0).Value)
+		Local $m = StringRegExp($t, "(\d{1,3}(?:[.,]\d+)?)", 1)
+		If Not @error And Not StringRegExp($t, $groesse ? "(?i)\d\s*kg\b" : "(?i)\d\s*cm\b") Then
+			Local $z = Number(StringReplace($m[0], ",", "."))
+			If $groesse And $z > 0 And $z < 3 Then $z *= 100
+			If ($groesse And $z >= 100 And $z <= 230) Or (Not $groesse And $z >= 20 And $z <= 350) Then
+				$erg[0] = $z
+				$erg[1] = String($rs.Fields(1).Value)
+				$erg[2] = $herkunft
+				$gefunden = True
+				ExitLoop
+			EndIf
+		EndIf
+		$rs.MoveNext
+	WEnd
+	$rs.Close
+	Return $gefunden
+EndFunc
+
+; Zahl mit $stellen Nachkommastellen und Dezimalkomma
+Func BMIKomma($z, $stellen)
+	Return StringReplace(StringFormat("%." & $stellen & "f", $z), ".", ",")
+EndFunc
+
+; Einteilung nach WHO
+Func BMIKlasse($bmi)
+	If $bmi < 18.5 Then Return "Untergewicht"
+	If $bmi < 25 Then Return "Normalgewicht"
+	If $bmi < 30 Then Return ChrW(220) & "bergewicht"
+	If $bmi < 35 Then Return "Adipositas Grad I"
+	If $bmi < 40 Then Return "Adipositas Grad II"
+	Return "Adipositas Grad III"
 EndFunc
 
 ; ADODB-Verbindung zu "medoff" (Medical Office, Server wie bei Dateilese aus der Registry: MOServer, sonst MORes)
