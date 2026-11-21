@@ -119,7 +119,7 @@
 ;                              Groesse, Gewicht und deren Datum (BMIAnzeigen): zuerst aus quelle (eintraege, sonst
 ;                              anamnesebogen), was dort fehlt, aus Medical Office (ltag, FICdcode GEW/GR, Kategorien gew/groe)
 ;            b, e              schnell nacheinander in der Liste der Karteikarte ([BriefEinfuegen] Folge=, Zeit=600 ms):
-;                              im offenen Word-Fenster mit dem juengsten Arztbrief des geoeffneten Patienten ("PID n,
+;                              im offenen Word- bzw. LibreOffice-Fenster mit dem juengsten Arztbrief des Patienten ("PID n,
 ;                              Arztbrief vom TT.MM.JJ hhmmss" im Titel) alles markieren und kopieren, in MO einen Brief
 ;                              aus der Vorlage eArztbrief anlegen (Kuerzel q e a), einfuegen, F2; Esc bricht ab.
 ;                              Kommt das e nicht rechtzeitig, erreichen das b und die naechste Taste MO wie getippt
@@ -1369,7 +1369,7 @@ Func BENachliefern()
 	DllCall("user32.dll", "none", "keybd_event", "byte", $gBEErst, "byte", $gBEScan, "dword", 2, "ulong_ptr", $Kennung)
 EndFunc
 
-; b, e in der Liste der Karteikarte: im offenen Word-Fenster mit dem juengsten Arztbrief des in Medical Office geoeffneten
+; b, e in der Liste der Karteikarte: im offenen Word- oder LibreOffice-Fenster mit dem juengsten Arztbrief des in Medical Office geoeffneten
 ; Patienten (Dateiname von Dateilese "Name Vorname, PID <Pat_id>, Arztbrief vom TT.MM.JJ hhmmss ...") den ganzen Text
 ; markieren und kopieren, in Medical Office einen Brief aus der Vorlage ([BriefEinfuegen] Kuerzel=qea, eArztbrief)
 ; anlegen, den Text dort einfuegen und mit F2 speichern. Danach kommt der alte Inhalt der Zwischenablage zurueck;
@@ -1380,7 +1380,7 @@ Func BriefEinfuegen()
 	Local $pid = MOOffenePatId($hMO)
 	If Not $pid Then Return Meldung("Brief einfuegen: Patientennummer des geoeffneten Patienten nicht feststellbar")
 	Local $hWord = BriefWordFenster($pid)
-	If Not $hWord Then Return Meldung("Brief einfuegen: kein offener Arztbrief zu Pat. " & $pid & " in Word" & @CRLF & _
+	If Not $hWord Then Return Meldung("Brief einfuegen: kein offener Arztbrief zu Pat. " & $pid & " in Word oder LibreOffice" & @CRLF & _
 			"(Fenstertitel mit ""PID " & $pid & ", Arztbrief vom TT.MM.JJ hhmmss"")")
 	Local $alt = AblageSichern(), $altOk = Not @error
 	$gSucheAbbruch = False
@@ -1401,18 +1401,22 @@ EndFunc
 
 Func BriefEinfuegenAblauf($hMO, $hWord)
 	Local $pause = Int(Einst("BriefEinfuegen", "Pause", $defBEPause))
-	; Word: alles markieren und kopieren
-	If Not MetVorn($hWord) Then Return Meldung("Brief einfuegen: Word-Fenster laesst sich nicht aktivieren")
+	; Word bzw. LibreOffice: alles markieren und kopieren
+	If Not MetVorn($hWord) Then Return Meldung("Brief einfuegen: Fenster des Arztbriefs laesst sich nicht aktivieren")
 	DllCall("user32.dll", "bool", "OpenClipboard", "hwnd", 0)
 	DllCall("user32.dll", "bool", "EmptyClipboard")
 	DllCall("user32.dll", "bool", "CloseClipboard")
-	TasteEinspeisen(0x41, False, True) ; Strg+A
-	Sleep(150)
+	; Strg+A; in LibreOffice markiert es in einer Tabelle erst die Zelle, dann die Tabelle, erst dann alles
+	For $i = 1 To 3
+		TasteEinspeisen(0x41, False, True)
+		Sleep(100)
+	Next
+	Sleep(50)
 	TasteEinspeisen(0x43, False, True) ; Strg+C
 	Local $t = TimerInit()
 	While ClipGet() = ""
 		If $gSucheAbbruch Then Return False
-		If TimerDiff($t) > 5000 Then Return Meldung("Brief einfuegen: Word hat nichts in die Zwischenablage kopiert")
+		If TimerDiff($t) > 5000 Then Return Meldung("Brief einfuegen: Word bzw. LibreOffice hat nichts in die Zwischenablage kopiert")
 		Sleep(50)
 	WEnd
 	; Medical Office: Fokus in die Karteikarte, Kuerzel der Vorlage tippen
@@ -1444,10 +1448,12 @@ Func BriefEinfuegenAblauf($hMO, $hWord)
 	Return True
 EndFunc
 
-; Word-Fenster (OpusApp) mit dem juengsten Arztbrief zu $pid nach Datum und Uhrzeit im Titel, 0 wenn keins
+; Fenster von Word (OpusApp) oder LibreOffice Writer (SALFRAME) mit dem juengsten Arztbrief zu $pid nach Datum und
+; Uhrzeit im Titel, 0 wenn keins
 Func BriefWordFenster($pid)
-	Local $l = WinList("[CLASS:OpusApp]"), $best = 0, $bestZeit = ""
+	Local $l = WinList("[REGEXPCLASS:^(OpusApp|SALFRAME)$]"), $best = 0, $bestZeit = ""
 	For $i = 1 To $l[0][0]
+		If Not BitAND(WinGetState($l[$i][1]), 2) Then ContinueLoop
 		Local $m = StringRegExp($l[$i][0], "PID " & $pid & ", Arztbrief vom (\d{1,2})\.(\d{1,2})\.(\d{2}) (\d{6})", 1)
 		If @error Then ContinueLoop
 		Local $zeit = $m[2] & StringFormat("%02d%02d", $m[1], $m[0]) & $m[3]

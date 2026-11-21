@@ -81,7 +81,7 @@ Strg+Alt+B, dann M  BMI des geöffneten Patienten nach dem jüngsten Gewicht, da
                     "Körpergröße", auch aus Laboraufträgen, und die Kategorien gew bzw. groe);
                     unplausible Werte werden übergangen. Esc nach Strg+Alt+B bricht ab
 b, e               schnell nacheinander (innerhalb 0,6 s) in der Liste der Karteikarte: Arztbrief einfügen.
-                    Im offenen Word-Fenster mit dem jüngsten Arztbrief des geöffneten Patienten (Titel
+                    Im offenen Word- oder LibreOffice-Fenster mit dem jüngsten Arztbrief des Patienten (Titel
                     "..., PID <Pat_id>, Arztbrief vom TT.MM.JJ hhmmss ...", wie ihn Dateilese anlegt) wird
                     der ganze Text markiert und kopiert, in Medical Office ein Brief aus der Vorlage
                     eArztbrief angelegt (q, e, a), der Text dort eingefügt und mit F2 gespeichert.

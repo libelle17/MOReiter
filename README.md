@@ -22,7 +22,7 @@ Tastatur an Stellen, wo es sonst nur die Maus gibt, zum Beispiel:
 - BMI: Strg+Alt+B, dann M zeigt den BMI nach dem jüngsten Gewicht mit Größe, Gewicht und deren Datum – zuerst aus
   der Datenbank quelle, was dort fehlt, aus Medical Office,
 - Arztbrief übernehmen: b, e schnell nacheinander in der Karteikarte kopiert den ganzen Text des jüngsten offenen
-  Word-Arztbriefs des Patienten (von Dateilese) in einen neuen Brief aus der Vorlage eArztbrief (q, e, a) und speichert mit F2,
+  Arztbriefs (Word oder LibreOffice) des Patienten (von Dateilese) in einen neuen Brief aus der Vorlage eArztbrief (q, e, a) und speichert mit F2,
 - Briefversand, ePA-Hochladen, zuletzt geöffnete Patienten, Hauptmenü …,
 - Strg+Alt zeigt farbig, welche Tasten in der aktuellen Ansicht was bewirken,
 - Strg+Alt+F1 zeigt die Hilfe mit allen Tasten, die auf diesem PC eingerichtet sind
