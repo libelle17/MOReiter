@@ -115,6 +115,11 @@
 ;                              eine Woche, mit "(nach dem Essen)"; P: Privatrezept, nicht nur rabattierte, Grund
 ;                              "Stoffwechsel"; K: Kassenrezept, nur rabattierte, Grund "Zucker"; Zeilen 2-4 als
 ;                              Fremdverordnung; zuletzt F2), Esc bricht ab
+;            b, e              schnell nacheinander in der Liste der Karteikarte ([BriefEinfuegen] Folge=, Zeit=600 ms):
+;                              im offenen Word-Fenster mit dem juengsten Arztbrief des geoeffneten Patienten ("PID n,
+;                              Arztbrief vom TT.MM.JJ hhmmss" im Titel) alles markieren und kopieren, in MO einen Brief
+;                              aus der Vorlage eArztbrief anlegen (Kuerzel q e a), einfuegen, F2; Esc bricht ab.
+;                              Kommt das e nicht rechtzeitig, erreichen das b und die naechste Taste MO wie getippt
 ;            Alt+W             im Medikamentenkatalog: Klappliste "Alle Wirkstaerken" aufklappen
 ;            Strg+Alt+Umsch+D  Liste der Controls im aktiven Fenster (Klasse, Nummer, Text, Lage) in die
 ;                              Zwischenablage und nach %APPDATA%\MOReiter\Fenster.txt, zum Einrichten neuer Tasten
@@ -255,6 +260,11 @@ Global $gStrgZeit = 0, $gAltZeit = 0, $gAltScan = 0, $gAltGrVerdacht = False, $g
 		$gTasteZuletzt = TimerInit()
 Const $Kennung = 0x4D4F5231 ; "MOR1" in dwExtraInfo eigener Tastenereignisse
 Const $defFolgeZeit = 2000 ; ms, eine laengere Pause zwischen zwei Ziffern beginnt eine neue Folge
+; Brief einfuegen: b, e schnell nacheinander in der Liste der Karteikarte ([BriefEinfuegen] Folge=, Zeit= ms, 0 = aus);
+; virtuelle Tastencodes beider Buchstaben, Zeitpunkt des zurueckgehaltenen ersten (0 = keiner) und dessen Scancode;
+; Kuerzel der Briefvorlage, die MOReiter dann in der Karteikarte tippt
+Const $defBEFolge = "be", $defBEZeit = 600, $defBEKuerzel = "qea", $defBEWarten = 10000, $defBEPause = 500
+Global $gBEErst = 0, $gBEZweit = 0, $gBEZeit = 0, $gBEOffen = 0, $gBEScan = 0
 ; Einblendung: Fenster mit den Schildchen, zugehoeriges Fenster und dessen Kurzwahl-Knoepfe,
 ; Beginn des Haltens von Strg+Alt (0 = nicht gehalten), schon versucht
 Global $gEinblendung = 0, $gEinblendungWnd = 0, $gEinblendungKnoepfe = 0, $gHaltStart = 0, $gEinblendungVersucht = False
@@ -385,6 +395,11 @@ Local $erneuert = TimerInit()
 ; kurzes Sleep, damit der Hook die Tastatur nicht spuerbar verzoegert
 While 1
 	Sleep(10)
+	; zurueckgehaltenes b ohne rechtzeitiges e: doch noch an Medical Office
+	If $gBEOffen And TimerDiff($gBEOffen) > $gBEZeit Then
+		$gBEOffen = 0
+		BENachliefern()
+	EndIf
 	If $gAufgabe <> "" Then
 		Local $aufgabe = $gAufgabe
 		$gAufgabe = ""
@@ -482,6 +497,29 @@ Func TastenHook($nCode, $wParam, $lParam)
 				Return 1
 			EndIf
 		Else
+			; b, e in der Karteikarte: das b wird zurueckgehalten; folgt rechtzeitig das e, wird der Brief eingefuegt,
+			; sonst kommen das b und die naechste Taste in dieser Reihenfolge doch noch an
+			If $gBEOffen Then
+				If $vk = $gBEErst Then Return 1 ; automatische Wiederholung des gehaltenen b
+				Local $beZeit = TimerDiff($gBEOffen)
+				$gBEOffen = 0
+				If $vk = $gBEZweit And $beZeit <= $gBEZeit And OhneModifier() Then
+					If Not StringInStr($gUnten, "," & $vk & ",") Then $gUnten &= "," & $vk & ","
+					If $gLaeuft <> "" Then $gBesetzt = "BriefEinfuegen"
+					$gAufgabe = "BriefEinfuegen"
+					Return 1
+				EndIf
+				BENachliefern()
+				; die jetzige Taste hinter dem b nochmals einspeisen (ihr Loslassen kommt dann von selbst)
+				DllCall("user32.dll", "none", "keybd_event", "byte", $vk, "byte", $kb.scanCode, "dword", BitAND($kb.flags, 1), "ulong_ptr", $Kennung)
+				Return 1
+			EndIf
+			If $vk = $gBEErst And $gBEZeit > 0 And $gLaeuft = "" And $gAufgabe = "" And OhneModifier() And KarteiFokus() Then
+				If Not StringInStr($gUnten, "," & $vk & ",") Then $gUnten &= "," & $vk & ","
+				$gBEScan = $kb.scanCode
+				$gBEOffen = TimerInit()
+				Return 1
+			EndIf
 			; Ziffernblock bei Strg+Alt: Ziffer an die Nummer haengen, gewaehlt wird beim Loslassen
 			; (NummerPruefen); geschluckt, damit auch keine Alt+Ziffernblock-Zeichencodes entstehen
 			; in der Diagnoseerfassung ebenso die obere Ziffernreihe (ohne Umschalt, das ist dort frei)
@@ -1148,6 +1186,7 @@ Func Ausfuehren($aufgabe)
 		Return MetforminPlan(StringTrimLeft($aufgabe, 10) = "k")
 	EndIf
 	If $aufgabe = "Katalog:Wirkstaerke" Then Return KatalogWirkstaerke()
+	If $aufgabe = "BriefEinfuegen" Then Return BriefEinfuegen()
 	Local $teil = StringSplit($aufgabe, ":", 2)
 	If UBound($teil) = 1 Then Return Reiter($aufgabe)
 	Switch $teil[0]
@@ -1259,6 +1298,140 @@ Func EditorPositionen($hWnd, ByRef $pos)
 		$pos[$i][2] = $t[$i]
 		$pos[$i][3] = -1
 	Next
+EndFunc
+
+; weder Umschalt noch Strg, Alt oder Windowstaste gedrueckt (im Hook)
+Func OhneModifier()
+	Return Not (Gedrueckt(0x10) Or Gedrueckt(0x11) Or Gedrueckt(0x12) Or Gedrueckt(0x5B) Or Gedrueckt(0x5C))
+EndFunc
+
+; hat in Medical Office die Liste der Karteikarte den Fokus (kein Eingabefeld)? (im Hook, muss schnell sein)
+Func KarteiFokus()
+	If Not MOAktiv() Then Return False
+	Local $gti = DllStructCreate("dword cbSize;dword flags;hwnd hwndActive;hwnd hwndFocus;hwnd hwndCapture;" & _
+			"hwnd hwndMenuOwner;hwnd hwndMoveSize;hwnd hwndCaret;long left;long top;long right;long bottom")
+	DllStructSetData($gti, "cbSize", DllStructGetSize($gti))
+	Local $tid = _WinAPI_GetWindowThreadProcessId(_WinAPI_GetForegroundWindow(), 0)
+	Local $r = DllCall("user32.dll", "bool", "GetGUIThreadInfo", "dword", $tid, "struct*", $gti)
+	If @error Or Not $r[0] Then Return False
+	; 1 = GUI_CARETBLINKING
+	If BitAND(DllStructGetData($gti, "flags"), 1) Then Return False
+	Local $f = DllStructGetData($gti, "hwndFocus")
+	Return $f <> 0 And KarteiGrid($f)
+EndFunc
+
+; das zurueckgehaltene erste Zeichen von [BriefEinfuegen] Folge doch noch an Medical Office (Druecken und Loslassen;
+; das echte Loslassen schluckt der Hook ueber $gUnten)
+Func BENachliefern()
+	DllCall("user32.dll", "none", "keybd_event", "byte", $gBEErst, "byte", $gBEScan, "dword", 0, "ulong_ptr", $Kennung)
+	DllCall("user32.dll", "none", "keybd_event", "byte", $gBEErst, "byte", $gBEScan, "dword", 2, "ulong_ptr", $Kennung)
+EndFunc
+
+; b, e in der Liste der Karteikarte: im offenen Word-Fenster mit dem juengsten Arztbrief des in Medical Office geoeffneten
+; Patienten (Dateiname von Dateilese "Name Vorname, PID <Pat_id>, Arztbrief vom TT.MM.JJ hhmmss ...") den ganzen Text
+; markieren und kopieren, in Medical Office einen Brief aus der Vorlage ([BriefEinfuegen] Kuerzel=qea, eArztbrief)
+; anlegen, den Text dort einfuegen und mit F2 speichern. Danach kommt der alte Inhalt der Zwischenablage zurueck;
+; geht etwas schief, bleibt der Brieftext in der Zwischenablage (zum Einfuegen von Hand). Esc bricht ab.
+Func BriefEinfuegen()
+	Local $hMO = WinGetHandle($MOFenster)
+	If @error Then Return Meldung("Medical Office nicht gefunden")
+	Local $pid = MOOffenePatId($hMO)
+	If Not $pid Then Return Meldung("Brief einfuegen: Patientennummer des geoeffneten Patienten nicht feststellbar")
+	Local $hWord = BriefWordFenster($pid)
+	If Not $hWord Then Return Meldung("Brief einfuegen: kein offener Arztbrief zu Pat. " & $pid & " in Word" & @CRLF & _
+			"(Fenstertitel mit ""PID " & $pid & ", Arztbrief vom TT.MM.JJ hhmmss"")")
+	Local $alt = AblageSichern(), $altOk = Not @error
+	$gSucheAbbruch = False
+	$gSucheLaeuft = True
+	HinweisStehend("Brief einfuegen ... Esc bricht ab")
+	Local $ok = BriefEinfuegenAblauf($hMO, $hWord)
+	$gSucheLaeuft = False
+	If $gSucheAbbruch Then
+		$gSucheAbbruch = False
+		Return Meldung("Brief einfuegen abgebrochen (Esc); der Brieftext steht ggf. in der Zwischenablage")
+	EndIf
+	If Not $ok Then Return False
+	; erst jetzt: MO hat das Einfuegen laengst verarbeitet
+	If $altOk Then AblageZurueck($alt)
+	Hinweis("Arztbrief eingefuegt und gespeichert")
+	Return True
+EndFunc
+
+Func BriefEinfuegenAblauf($hMO, $hWord)
+	Local $pause = Int(Einst("BriefEinfuegen", "Pause", $defBEPause))
+	; Word: alles markieren und kopieren
+	If Not MetVorn($hWord) Then Return Meldung("Brief einfuegen: Word-Fenster laesst sich nicht aktivieren")
+	DllCall("user32.dll", "bool", "OpenClipboard", "hwnd", 0)
+	DllCall("user32.dll", "bool", "EmptyClipboard")
+	DllCall("user32.dll", "bool", "CloseClipboard")
+	TasteEinspeisen(0x41, False, True) ; Strg+A
+	Sleep(150)
+	TasteEinspeisen(0x43, False, True) ; Strg+C
+	Local $t = TimerInit()
+	While ClipGet() = ""
+		If $gSucheAbbruch Then Return False
+		If TimerDiff($t) > 5000 Then Return Meldung("Brief einfuegen: Word hat nichts in die Zwischenablage kopiert")
+		Sleep(50)
+	WEnd
+	; Medical Office: Fokus in die Karteikarte, Kuerzel der Vorlage tippen
+	If Not MetVorn($hMO) Then Return Meldung("Brief einfuegen: Medical Office laesst sich nicht aktivieren")
+	Local $hGrid = KarteiListe($hMO)
+	If Not $hGrid Then Return Meldung("Brief einfuegen: Karteikarte nicht gefunden; der Brieftext steht in der Zwischenablage")
+	ControlFocus($hMO, "", $hGrid)
+	Sleep(100)
+	Local $kz = StringSplit(StringUpper(Einst("BriefEinfuegen", "Kuerzel", $defBEKuerzel)), "", 2)
+	For $c In $kz
+		If Not StringRegExp($c, "^[A-Z0-9]$") Then ContinueLoop
+		TasteEinspeisen(Asc($c), False)
+		Sleep(40)
+	Next
+	Local $hEd = BriefEditorWarten($hMO, $hWord, Int(Einst("BriefEinfuegen", "Warten", $defBEWarten)))
+	If Not $hEd Then Return $gSucheAbbruch ? False : Meldung("Brief einfuegen: Brief aus der Vorlage ging nicht auf; der Brieftext steht in der Zwischenablage")
+	Sleep($pause)
+	If $gSucheAbbruch Then Return False
+	If Not MetVorn($hEd) Then Return Meldung("Brief einfuegen: Brieffenster laesst sich nicht aktivieren; der Brieftext steht in der Zwischenablage")
+	Local $hText = ControlGetHandle($hEd, "", "[CLASS:TWPRichText; INSTANCE:1]")
+	If Not @error Then ControlFocus($hEd, "", $hText)
+	TasteEinspeisen(0x56, False, True) ; Strg+V
+	Sleep($pause)
+	If $gSucheAbbruch Then Return False
+	If Not MetVorn($hEd) Then Return Meldung("Brief einfuegen: Brieffenster nicht mehr vorn, nicht gespeichert")
+	; im Editor (TDocumentForm) wie F2 dort: Strg+S, sonst F2 an das Fenster
+	If _WinAPI_GetClassName($hEd) = $EditorKlasse Then Return EditorTaste("Speichern")
+	TasteEinspeisen(0x71, False)
+	Return True
+EndFunc
+
+; Word-Fenster (OpusApp) mit dem juengsten Arztbrief zu $pid nach Datum und Uhrzeit im Titel, 0 wenn keins
+Func BriefWordFenster($pid)
+	Local $l = WinList("[CLASS:OpusApp]"), $best = 0, $bestZeit = ""
+	For $i = 1 To $l[0][0]
+		Local $m = StringRegExp($l[$i][0], "PID " & $pid & ", Arztbrief vom (\d{1,2})\.(\d{1,2})\.(\d{2}) (\d{6})", 1)
+		If @error Then ContinueLoop
+		Local $zeit = $m[2] & StringFormat("%02d%02d", $m[1], $m[0]) & $m[3]
+		If $zeit > $bestZeit Then
+			$bestZeit = $zeit
+			$best = $l[$i][1]
+		EndIf
+	Next
+	Return $best
+EndFunc
+
+; wartet bis $ms auf das Brieffenster aus der Vorlage: vorn, weder Hauptfenster noch Word, Klasse [BriefEinfuegen]
+; Fenster= (Vorgabe TDocumentForm) oder mit einem Textfeld TWPRichText; 0 bei Zeitablauf oder Esc
+Func BriefEditorWarten($hMO, $hWord, $ms)
+	Local $klasse = Einst("BriefEinfuegen", "Fenster", $EditorKlasse), $t = TimerInit()
+	While TimerDiff($t) < $ms
+		If $gSucheAbbruch Then Return 0
+		Local $v = _WinAPI_GetForegroundWindow()
+		If $v And $v <> $hMO And $v <> $hWord Then
+			If _WinAPI_GetClassName($v) = $klasse Then Return $v
+			ControlGetHandle($v, "", "[CLASS:TWPRichText; INSTANCE:1]")
+			If Not @error Then Return $v
+		EndIf
+		Sleep(100)
+	WEnd
+	Return 0
 EndFunc
 
 ; ist der Medikamentenkatalog das aktive Fenster? (im Hook, muss schnell sein)
@@ -2121,6 +2294,13 @@ Func AufrufeLaden()
 	$gAufrufProtokoll = (Einst("Aufrufe", "Protokoll", "0") = "1")
 	$gAltGrAbstand = Int(Einst("Allgemein", "AltGrAbstand", "50"))
 	$gTastenProtokoll = (Einst("Allgemein", "TastenProtokoll", "0") = "1")
+	; Brief einfuegen: zwei Buchstaben a-z, sonst aus
+	Local $beFolge = StringLower(StringStripWS(Einst("BriefEinfuegen", "Folge", $defBEFolge), 8))
+	$gBEZeit = StringRegExp($beFolge, "^[a-z]{2}$") ? Int(Einst("BriefEinfuegen", "Zeit", $defBEZeit)) : 0
+	If $gBEZeit > 0 Then
+		$gBEErst = Asc(StringUpper(StringLeft($beFolge, 1)))
+		$gBEZweit = Asc(StringUpper(StringRight($beFolge, 1)))
+	EndIf
 	If $gAufrufProtokoll Then Protokoll("MOReiter gestartet (" & @ScriptFullPath & ", Stand " & Stand() & "), " & $n & " Aufrufe eingerichtet")
 EndFunc
 

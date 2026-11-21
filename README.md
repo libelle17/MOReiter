@@ -19,6 +19,8 @@ Tastatur an Stellen, wo es sonst nur die Maus gibt, zum Beispiel:
 - Metformin-Steigerungsplan im Dosierplan: Strg+Alt+M, dann P (privat) bzw. K (Kasse) – fragt den Therapiebeginn ab,
   dann vier Wochenstufen mit Datum, „(nach dem Essen)“ und Grund, Zeilen 2–4 als Fremdverordnung; im Medikamentenkatalog klappt Alt+W
   „Alle Wirkstärken“ auf,
+- Arztbrief übernehmen: b, e schnell nacheinander in der Karteikarte kopiert den ganzen Text des jüngsten offenen
+  Word-Arztbriefs des Patienten (von Dateilese) in einen neuen Brief aus der Vorlage eArztbrief (q, e, a) und speichert mit F2,
 - Briefversand, ePA-Hochladen, zuletzt geöffnete Patienten, Hauptmenü …,
 - Strg+Alt zeigt farbig, welche Tasten in der aktuellen Ansicht was bewirken,
 - Strg+Alt+F1 zeigt die Hilfe mit allen Tasten, die auf diesem PC eingerichtet sind
