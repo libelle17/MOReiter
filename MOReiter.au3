@@ -62,6 +62,10 @@
 ;                              Kurzwahl rechts (erst die linke Spalte von oben nach unten, dann die naechste;
 ;                              [Diagnosen] Reihenfolge=Zeilen zaehlt zeilenweise); ohne Kalibrieren, die
 ;                              Knoepfe werden bei jedem Druck am Bildschirm gesucht
+;            Strg+Alt+S        in der Diagnoseerfassung (1. und 2. Stufe): Diagnosesuche (fehlertolerant in eigenen
+;                              Diagnosetexten, Alphabet und ICD-10-GM, MOReiter-Diagnosesuche.ps1), traegt ueber die
+;                              2. Stufe ein; oeffnet sich auch von selbst, wenn die Suche der 1. Stufe nach Enter
+;                              nichts findet ([Diagnosesuche] Automatisch=0 schaltet das ab)
 ;            Strg+Alt halten und auf dem Ziffernblock eine Nummer tippen (bis 3 Stellen, mit und ohne
 ;                              NumLock): beim Loslassen von Strg bzw. Alt wird der Filter bzw. in der
 ;                              Diagnoseerfassung die Kurzwahl mit dieser Nummer gewaehlt, auch jenseits von 24;
@@ -147,6 +151,7 @@
 #include <GuiRichEdit.au3>
 #include <GuiDateTimePicker.au3>
 #include <DateTimeConstants.au3>
+#include <GuiListView.au3>
 Opt("MustDeclareVars", 1)
 Opt("WinTitleMatchMode", 4)
 ; keine 250 ms Pause nach jedem Fensterbefehl; wo ein Fenster Zeit braucht, wird ausdruecklich gewartet
@@ -236,6 +241,15 @@ Const $LeistungDialog = "[TITLE:Medical Office; CLASS:TfrmDialogContainer]", $de
 ; Toleranz je Farbanteil; der Knopf mit dem Fokus ist dunkler und blau umrandet
 Const $DiagFenster = "[REGEXPTITLE:^Diagnoseerfassung]", $DiagTitel = "Diagnoseerfassung"
 Const $defDiagKnopfFarbe = 0xB6B6B6, $defDiagToleranz = 6, $defDiagReihenfolge = "Spalten"
+; 22.11.26: Diagnosesuche (Strg+Alt+S, automatisch nach erfolglosem Enter im Suchfeld der 1. Stufe): Fensterklassen der
+; 1. Stufe ("Diagnoseerfassung") und 2. Stufe ("Diagnosenerfassung - ICD ..."); Suchprozess (PowerShell), dessen ungelesene
+; Ausgabe, ob er "BEREIT" gemeldet hat bzw. schon vorab gestartet wurde; Zeitpunkt des letzten Enter in der 1. Stufe (0 = keins)
+Const $DiagKlasse1 = "TfrmDiagnoseeingabe", $DiagKlasse2 = "TfrmDiagnoseeingabeDetails"
+Global $gDiagPid = 0, $gDiagPuffer = "", $gDiagBereit = False, $gDiagStartVersucht = False, $gDiagEnter = 0
+; Sanduhr als Mauszeiger gesetzt (SanduhrAn/SanduhrAus)
+Global $gSanduhr = False, $gSanduhrHinweis = 0
+; Zahl der bisher gezeigten Hinweise (SanduhrAus nimmt nur den eigenen weg, nicht eine inzwischen gezeigte Meldung)
+Global $gHinweisZahl = 0
 ; virtuelle Tastencodes fuer die Filter 1..24 (deutsches Layout: ^ = OEM_5, sz = OEM_4, Akut = OEM_6)
 Global $FilterTasten[24] = [0xDC, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x30, 0xDB, 0xDD, _
 		0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B]
@@ -397,6 +411,8 @@ If Not HookErneuern() Then
 	Exit 1
 EndIf
 OnAutoItExitRegister("HookEntfernen")
+OnAutoItExitRegister("DiagSucheBeenden")
+OnAutoItExitRegister("SanduhrAus")
 ; Adlib laeuft auch waehrend der Sleeps in einer gerade laufenden Aufgabe
 AdlibRegister("NeustartPruefen", 250)
 ; Strg+Alt+Esc auch als Hotkey des Systems: haengt MOReiter in einer Aufgabe, hat Windows den Hook evtl.
@@ -431,6 +447,7 @@ While 1
 	EndIf
 	NummerPruefen()
 	EinblendungPruefen()
+	DiagEnterPruefen()
 	If $gHilfe Then HilfePruefen()
 	EditorNachVorn()
 	; Strg+Alt+M ohne P/K: Hinweis wieder weg
@@ -602,6 +619,9 @@ Func TastenHook($nCode, $wParam, $lParam)
 					Return 1
 				EndIf
 			EndIf
+			; Enter in der 1. Stufe der Diagnoseerfassung: geht an Medical Office, DiagEnterPruefen schaut danach, ob die Liste
+			; leer blieb (dann Diagnosesuche)
+			If $vk = 0x0D And OhneModifier() And _WinAPI_GetClassName(_WinAPI_GetForegroundWindow()) = $DiagKlasse1 Then $gDiagEnter = TimerInit()
 			Local $aufgabe = HookAufgabe($vk)
 			If $aufgabe = "MetforminWahl" Then $gMetWarten = TimerInit()
 			If $aufgabe = "BWahl" Then $gBWarten = TimerInit()
@@ -697,6 +717,8 @@ Func HookAufgabe($vk)
 			Return ($kalib Or Not MOAktiv()) ? "" : "MetforminWahl"
 		Case 0x42 ; B, nur in Medical Office: M (BMI) folgt
 			Return ($kalib Or Not MOAktiv()) ? "" : "BWahl"
+		Case 0x53 ; S, nur in der Diagnoseerfassung: Diagnosesuche
+			Return ($kalib Or Not DiagStufeAktiv()) ? "" : "Diagnosesuche"
 	EndSwitch
 	For $i = 0 To UBound($FilterTasten) - 1
 		If $vk <> $FilterTasten[$i] Then ContinueLoop
@@ -865,15 +887,20 @@ Func EinblendungZeigen()
 		BriefPositionen($hWnd, $pos)
 	ElseIf DiagAktiv() Then
 		Local $k = DiagKnoepfe($hWnd)
-		If Not IsArray($k) Then Return
-		$gEinblendungKnoepfe = $k
-		ReDim $pos[UBound($k)][4]
-		For $i = 0 To UBound($k) - 1
-			$pos[$i][0] = $k[$i][3] + 2
-			$pos[$i][1] = $k[$i][1]
-			$pos[$i][2] = NummerText($i)
-			$pos[$i][3] = -1
-		Next
+		If IsArray($k) Then
+			$gEinblendungKnoepfe = $k
+			ReDim $pos[UBound($k)][4]
+			For $i = 0 To UBound($k) - 1
+				$pos[$i][0] = $k[$i][3] + 2
+				$pos[$i][1] = $k[$i][1]
+				$pos[$i][2] = NummerText($i)
+				$pos[$i][3] = -1
+			Next
+		EndIf
+		; S (Diagnosesuche) am Suchfeld
+		KnopfPos($pos, DiagSuchfeld($hWnd), "S")
+	ElseIf _WinAPI_GetClassName($hWnd) = $DiagKlasse2 Then
+		KnopfPos($pos, DiagControl($hWnd, "TAlnumMemo", True), "S")
 	ElseIf EditorAktiv() Then
 		EditorPositionen($hWnd, $pos)
 	ElseIf KatalogAktiv() Then
@@ -1244,6 +1271,7 @@ Func Ausfuehren($aufgabe)
 		Return BMIAnzeigen()
 	EndIf
 	If $aufgabe = "Katalog:Wirkstaerke" Then Return KatalogWirkstaerke()
+	If $aufgabe = "Diagnosesuche" Then Return Diagnosesuche()
 	If $aufgabe = "BriefEinfuegen" Then Return BriefEinfuegen()
 	If StringLeft($aufgabe, 4) = "BMP:" Then Return BmpErzeugen(StringTrimLeft($aufgabe, 4))
 	Local $teil = StringSplit($aufgabe, ":", 2)
@@ -2232,6 +2260,607 @@ Func Median($a)
 		$a[$j] = $v
 	Next
 	Return $a[Int(UBound($a) / 2)]
+EndFunc
+
+; ---- Diagnosesuche (22.11.26): fehlertolerante Suche in ICD-10-GM, Alphabet und eigenen Diagnosetexten ----
+; Strg+Alt+S in der Diagnoseerfassung (beide Stufen), und automatisch, wenn die Suche der 1. Stufe nach Enter nichts
+; findet ([Diagnosesuche] Automatisch=0 schaltet das ab). Gesucht wird in MOReiter-Diagnosesuche.ps1 (eingebettet,
+; laeuft als PowerShell im Hintergrund, s. dort); eingetragen wird ueber das Fenster der 2. Stufe von Medical Office
+; ("manuelle Eingabe"): ICD-Code, Diagnosetext, Zusatztext, Prioritaet, Status, Sicherheit, Seite. OK drueckt der
+; Benutzer selbst ([Diagnosesuche] OK=1: MOReiter drueckt es).
+
+; ist eine der beiden Stufen der Diagnoseerfassung vorn? (im Hook, muss schnell sein)
+Func DiagStufeAktiv()
+	Local $k = _WinAPI_GetClassName(_WinAPI_GetForegroundWindow())
+	Return $k = $DiagKlasse1 Or $k = $DiagKlasse2
+EndFunc
+
+; Hauptschleife: nach Enter im Suchfeld der 1. Stufe warten, ob die Liste "ICD-Code Text" leer bleibt
+Func DiagEnterPruefen()
+	If Not $gDiagEnter Then
+		; Suchprozess vorab starten, sobald die Diagnoseerfassung vorn ist (der erste Start laedt einige Sekunden)
+		If $gDiagPid = 0 And Not $gDiagStartVersucht And DiagStufeAktiv() Then
+			$gDiagStartVersucht = True
+			DiagSucheStarten()
+		EndIf
+		Return
+	EndIf
+	Local $ms = TimerDiff($gDiagEnter)
+	If $ms < 250 Then Return
+	If Einst("Diagnosesuche", "Automatisch", "1") <> "1" Then
+		$gDiagEnter = 0
+		Return
+	EndIf
+	Local $h = _WinAPI_GetForegroundWindow()
+	If _WinAPI_GetClassName($h) <> $DiagKlasse1 Or $gLaeuft <> "" Then
+		$gDiagEnter = 0
+		Return
+	EndIf
+	Local $hEd = DiagSuchfeld($h), $hLv = DiagListe($h)
+	; Medical Office setzt den Fokus nach Enter in die Liste, auch wenn sie leer bleibt
+	Local $fok = ControlGetHandle($h, "", ControlGetFocus($h))
+	If Not $hEd Or Not $hLv Or ($fok <> $hEd And $fok <> $hLv) Then
+		$gDiagEnter = 0
+		Return
+	EndIf
+	; 0x1004 = LVM_GETITEMCOUNT
+	If _SendMessage($hLv, 0x1004) > 0 Then
+		$gDiagEnter = 0
+		Return
+	EndIf
+	If $ms < Int(Einst("Diagnosesuche", "Warten", "1200")) Then Return
+	$gDiagEnter = 0
+	If StringStripWS(ControlGetText($h, "", $hEd), 3) = "" Then Return
+	$gAufgabe = "Diagnosesuche"
+EndFunc
+
+; sichtbares Control der Klasse $klasse im Fenster $h mit der groessten Flaeche (bzw. das oberste bei $oben)
+Func DiagControl($h, $klasse, $oben = False, $nr = 1)
+	Local $best = 0, $wert = -1, $liste[0][2]
+	For $i = 1 To 30
+		Local $c = ControlGetHandle($h, "", "[CLASS:" & $klasse & "; INSTANCE:" & $i & "]")
+		If @error Or Not $c Then ExitLoop
+		If Not _WinAPI_IsWindowVisible($c) Then ContinueLoop
+		Local $p = WinGetPos($c)
+		If @error Then ContinueLoop
+		ReDim $liste[UBound($liste) + 1][2]
+		$liste[UBound($liste) - 1][0] = $c
+		$liste[UBound($liste) - 1][1] = $oben ? $p[1] : -$p[2] * $p[3]
+	Next
+	; $nr-tes nach dem Schluessel (aufsteigend)
+	For $n = 1 To $nr
+		$best = 0
+		$wert = 0
+		Local $bi = -1
+		For $i = 0 To UBound($liste) - 1
+			If $liste[$i][0] = 0 Then ContinueLoop
+			If $bi < 0 Or $liste[$i][1] < $wert Then
+				$bi = $i
+				$wert = $liste[$i][1]
+			EndIf
+		Next
+		If $bi < 0 Then Return 0
+		$best = $liste[$bi][0]
+		$liste[$bi][0] = 0
+	Next
+	Return $best
+EndFunc
+
+Func DiagSuchfeld($h)
+	Return DiagControl($h, "TAlnumEdit", True)
+EndFunc
+
+Func DiagListe($h)
+	Return DiagControl($h, "TMOListView")
+EndFunc
+
+; Suchprozess starten (ohne zu warten); "" oder Fehlertext
+Func DiagSucheStarten($neu = False)
+	DiagSucheBeenden()
+	Local $ps = @TempDir & "\MOReiter-Diagnosesuche.ps1"
+	If Not FileInstall("MOReiter-Diagnosesuche.ps1", $ps, 1) And Not FileExists($ps) Then Return "kann " & $ps & " nicht schreiben"
+	; 32-bit-PowerShell: nur dort gibt es den MySQL-ODBC-Treiber (MOReiter.exe ist 32 bit, ohne Umleitung trotzdem ausdruecklich)
+	Local $exe = @WindowsDir & "\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
+	If Not FileExists($exe) Then $exe = "powershell.exe"
+	Local $zugang = Einst("Allgemein", "Zugang", "C:\Program Files (x86)\Dateilesen\Zugang.ini")
+	Local $server = RegWertDL("MOServer", "wser") & "," & RegWertDL("MORes", "wres")
+	$gDiagPid = Run('"' & $exe & '" -NoProfile -ExecutionPolicy Bypass -File "' & $ps & '" -Zugang "' & $zugang & '" -Server "' & $server & _
+			'" -Port "' & Einst("Allgemein", "MOPort", "2020") & '" -Zwischen "' & @AppDataDir & '\MOReiter\Diagnosen.tsv" -Stunden "' & _
+			Einst("Diagnosesuche", "Stunden", "20") & '" -Neu "' & ($neu ? "1" : "0") & '"', "", @SW_HIDE, 1 + 2 + 4)
+	If Not $gDiagPid Then Return "PowerShell nicht gestartet"
+	$gDiagPuffer = ""
+	$gDiagBereit = False
+	Return ""
+EndFunc
+
+; wartet, bis der Suchprozess bereit ist (startet ihn noetigenfalls); "" oder Fehlertext
+Func DiagSucheBereit()
+	AdlibUnRegister("DiagSucheBeenden")
+	If Not $gDiagPid Or Not ProcessExists($gDiagPid) Then
+		Local $f = DiagSucheStarten()
+		If $f <> "" Then Return $f
+	EndIf
+	If $gDiagBereit Then Return ""
+	HinweisStehend("Diagnosesuche: lade ICD-10-GM, Alphabet und eigene Diagnosetexte ...")
+	Local $a = DiagAntwort("BEREIT", 90000)
+	HinweisWeg()
+	If @error Then
+		DiagSucheBeenden()
+		Return $a
+	EndIf
+	$gDiagBereit = True
+	Return ""
+EndFunc
+
+Func DiagSucheBeenden()
+	AdlibUnRegister("DiagSucheBeenden")
+	If $gDiagPid And ProcessExists($gDiagPid) Then
+		StdinWrite($gDiagPid)
+		ProcessWaitClose($gDiagPid, 2)
+		If ProcessExists($gDiagPid) Then ProcessClose($gDiagPid)
+	EndIf
+	$gDiagPid = 0
+	$gDiagBereit = False
+	$gDiagStartVersucht = False
+EndFunc
+
+; liest bis zur Zeile, die mit $marke beginnt; Rueckgabe der Text davor (bei BEREIT die Zeile selbst), bei Fehler @error
+Func DiagAntwort($marke, $ms)
+	Local $t = TimerInit()
+	While 1
+		$gDiagPuffer &= BinaryToString(StdoutRead($gDiagPid, False, True), 4)
+		Local $p = StringRegExp($gDiagPuffer, "(?s)^(.*?)(?:^|\r?\n)(" & $marke & "[^\r\n]*)\r?\n", 1)
+		If Not @error Then
+			$gDiagPuffer = StringMid($gDiagPuffer, StringLen($p[0]) + StringLen($p[1]) + 3)
+			$gDiagPuffer = StringRegExpReplace($gDiagPuffer, "^\r?\n", "")
+			Return ($marke = "BEREIT") ? $p[1] : $p[0]
+		EndIf
+		If StringInStr($gDiagPuffer, "FEHLER:") And $marke = "BEREIT" Then Return SetError(1, 0, "Diagnosesuche: " & StringStripWS($gDiagPuffer, 3))
+		If Not ProcessExists($gDiagPid) Then
+			Local $err = StringStripWS(BinaryToString(StderrRead($gDiagPid, False, True), 4) & " " & $gDiagPuffer, 3)
+			Return SetError(1, 0, "Diagnosesuche beendet" & (($err = "") ? "" : ": " & StringLeft($err, 300)))
+		EndIf
+		If TimerDiff($t) > $ms Then Return SetError(1, 0, "Diagnosesuche antwortet nicht")
+		Sleep(10)
+	WEnd
+EndFunc
+
+; Suchanfrage; Rueckgabe [n][7] (Code, Herkunft, Anzahl, Treffertext, Vorgabetext, Hinweis, Unterschluessel) oder
+; @error mit Text
+Func DiagSuchen($text)
+	Local $leer[0][7]
+	$text = StringStripWS(StringRegExpReplace($text, "[\t\r\n]", " "), 3)
+	If $text = "" Then Return $leer
+	StdinWrite($gDiagPid, StringToBinary("S" & @TAB & $text & @CRLF, 4))
+	Local $a = DiagAntwort("ENDE", 10000)
+	If @error Then Return SetError(1, 0, $a)
+	Local $z = StringSplit(StringStripCR($a), @LF, 2), $erg[UBound($z)][7], $n = 0
+	For $l In $z
+		Local $f = StringSplit($l, @TAB, 2)
+		If UBound($f) < 7 Then ContinueLoop
+		For $i = 0 To 6
+			$erg[$n][$i] = $f[$i]
+		Next
+		$n += 1
+	Next
+	ReDim $erg[$n][7]
+	Return $erg
+EndFunc
+
+; Strg+Alt+S bzw. automatisch: Suchfenster; Vorgabe fuer die Suche aus dem Suchfeld der 1. bzw. dem Diagnosetext der 2. Stufe
+Func Diagnosesuche()
+	Local $h = _WinAPI_GetForegroundWindow(), $kl = _WinAPI_GetClassName($h), $vorgabe = ""
+	If $kl = $DiagKlasse1 Then
+		Local $hEd = DiagSuchfeld($h)
+		If $hEd Then $vorgabe = ControlGetText($h, "", $hEd)
+	ElseIf $kl = $DiagKlasse2 Then
+		Local $hT = DiagControl($h, "TAlnumMemo", True)
+		If $hT Then $vorgabe = ControlGetText($h, "", $hT)
+	Else
+		Return Meldung("Diagnosesuche nur in der Diagnoseerfassung von Medical Office")
+	EndIf
+	$vorgabe = StringStripWS(StringRegExpReplace($vorgabe, "[\r\n]+", " "), 7)
+	Local $f = DiagSucheBereit()
+	If $f <> "" Then Return Meldung($f)
+	Local $w = DiagSuchFenster($vorgabe)
+	If @error Then
+		WinActivate($h)
+		AdlibRegister("DiagSucheBeenden", 1800000)
+		Return True
+	EndIf
+	AdlibRegister("DiagSucheBeenden", 1800000)
+	; waehrend des Eintragens Sanduhr als Mauszeiger und ein Hinweis, damit niemand dazwischen klickt oder tippt
+	SanduhrAn()
+	Local $ok = DiagEintragen($h, $w)
+	SanduhrAus()
+	Return $ok
+EndFunc
+
+; Mauszeiger systemweit als Sanduhr (der normale Pfeil und die Textmarke werden ersetzt), Hinweis oben links im
+; Fenster der Diagnosenerfassung (nicht ueber den Kaestchen, die am Bildschirm abgelesen werden); SanduhrAus stellt
+; die Zeiger des Benutzers wieder her (auch beim Beenden von MOReiter)
+Func SanduhrAn()
+	If $gSanduhr Then Return
+	$gSanduhr = True
+	; 32514 = OCR_WAIT; ersetzt 32512 = OCR_NORMAL und 32513 = OCR_IBEAM (SetSystemCursor verbraucht die Kopie)
+	For $id In StringSplit("32512|32513", "|", 2)
+		Local $k = DllCall("user32.dll", "handle", "LoadCursorW", "handle", 0, "int", 32514)
+		If @error Or Not $k[0] Then ContinueLoop
+		Local $kopie = DllCall("user32.dll", "handle", "CopyIcon", "handle", $k[0])
+		If @error Or Not $kopie[0] Then ContinueLoop
+		DllCall("user32.dll", "bool", "SetSystemCursor", "handle", $kopie[0], "dword", Int($id))
+	Next
+	Local $f = WinGetPos("[CLASS:" & $DiagKlasse1 & "]")
+	If @error Then
+		HinweisStehend("MOReiter tr" & ChrW(228) & "gt die Diagnose ein, bitte warten ...")
+	Else
+		AdlibUnRegister("HinweisWeg")
+		ToolTip("MOReiter tr" & ChrW(228) & "gt die Diagnose ein, bitte warten ...", $f[0] + 200, $f[1] + 2, "MOReiter")
+	EndIf
+	$gSanduhrHinweis = $gHinweisZahl
+EndFunc
+
+Func SanduhrAus()
+	If Not $gSanduhr Then Return
+	$gSanduhr = False
+	; 0x57 = SPI_SETCURSORS: die eingestellten Zeiger neu laden
+	DllCall("user32.dll", "bool", "SystemParametersInfoW", "uint", 0x57, "uint", 0, "ptr", 0, "uint", 0)
+	If $gHinweisZahl = $gSanduhrHinweis Then ToolTip("")
+EndFunc
+
+; Fenster "MOReiter Diagnosesuche"; Rueckgabe [7]: Code, Diagnosetext, Prioritaet ("" = wie MO), Zusatztext,
+; Status-, Sicherheits-, Seiten-Kaestchen (Text in MO oder ""); Abbruch: @error
+Func DiagSuchFenster($vorgabe)
+	; fast bildschirmfuellend (Arbeitsflaeche ohne Taskleiste), damit moeglichst viel Text lesbar ist; die Trefferliste
+	; bekommt die Hoehe, die der feste untere Teil (ab $u) uebrig laesst
+	Local $wa = _WinAPI_GetWorkArea()
+	Local $b = $wa.Right - $wa.Left - 40, $hoe = $wa.Bottom - $wa.Top - 70
+	If $b < 1000 Then $b = 1000
+	If $hoe < 720 Then $hoe = 720
+	Local $u = $hoe - 354
+	Local $g = GUICreate("MOReiter Diagnosesuche", $b, $hoe, $wa.Left + 20, $wa.Top + 10, BitOR($WS_CAPTION, $WS_SYSMENU), $WS_EX_TOPMOST)
+	GUISetFont(9, 400, 0, "Segoe UI")
+	GUICtrlCreateLabel("&Suche:", 12, 15, 60, 20)
+	Local $such = GUICtrlCreateInput($vorgabe, 75, 12, $b - 87, 24)
+	Local $lv = GUICtrlCreateListView("ICD|Treffer|Herkunft|Vorgabetext (ICD-10-GM)", 12, 44, $b - 24, $u - 50, _
+			BitOR($LVS_REPORT, $LVS_SINGLESEL, $LVS_SHOWSELALWAYS, $LVS_NOSORTHEADER), BitOR($LVS_EX_FULLROWSELECT, $LVS_EX_GRIDLINES))
+	Local $hLv = GUICtrlGetHandle($lv)
+	_GUICtrlListView_SetColumnWidth($hLv, 0, 70)
+	Local $breit1 = Int(($b - 24 - 70 - 95 - 25) * 0.45)
+	_GUICtrlListView_SetColumnWidth($hLv, 1, $breit1)
+	_GUICtrlListView_SetColumnWidth($hLv, 2, 95)
+	_GUICtrlListView_SetColumnWidth($hLv, 3, $b - 24 - 70 - $breit1 - 95 - 25)
+	Local $info = GUICtrlCreateEdit("", 12, $u, $b - 24, 56, BitOR($ES_READONLY, $ES_MULTILINE, $ES_AUTOVSCROLL))
+	GUICtrlSetBkColor($info, 0xF4F4F4)
+	GUICtrlCreateLabel("&Diagnosetext:", 12, $u + 67, 85, 20)
+	Local $dt = GUICtrlCreateInput($vorgabe, 100, $u + 64, $b - 112, 24)
+	GUICtrlCreateLabel("Text:", 100, $u + 96, 35, 20)
+	Local $rEigen = GUICtrlCreateRadio("&eigener Text (wie gesucht)", 140, $u + 94, 190, 20)
+	Local $rFund = GUICtrlCreateRadio("&Fundtext", 340, $u + 94, 90, 20)
+	Local $rVorg = GUICtrlCreateRadio("Vorgabete&xt (ICD-10-GM)", 440, $u + 94, 200, 20)
+	GUICtrlSetState($rEigen, $GUI_CHECKED)
+	; Prioritaet und Zusatztext
+	GUICtrlCreateLabel("&Priorit" & ChrW(228) & "t:", 12, $u + 131, 70, 20)
+	Local $prio = GUICtrlCreateCombo("", 85, $u + 128, 200, 24, $CBS_DROPDOWNLIST)
+	Local $prioVorgabe = "(wie Medical Office)"
+	GUICtrlSetData($prio, $prioVorgabe & "|Hauptdiagnose|Nebendiagnose", $prioVorgabe)
+	GUICtrlCreateLabel("freier Zusatz&text:", 300, $u + 131, 110, 20)
+	Local $zus = GUICtrlCreateInput("", 410, $u + 128, $b - 422, 24)
+	; Kaestchen wie in Medical Office (Beschriftung und Taste gleich), je Gruppe hoechstens eins
+	Local $gruppen[3] = ["Status", "Sicherheit", "Seite"]
+	Local $texte[3][5] = [["A&kutdiagnose", "Da&uerdiagnose", "a&namnest. Diagnose", "h&istorische Diagnose", "abgeschl&ossene Diagnose"], _
+			["&Gesichert", "&Verdacht auf", "&Zustand nach", "&Ausschluss von", ""], ["&Rechts", "&Links", "&Beiderseits", "", ""]]
+	Local $kk[3][5], $gw = Int(($b - 24 - 16) / 3), $gx[3] = [12, 12 + $gw + 8, 12 + 2 * ($gw + 8)]
+	For $gi = 0 To 2
+		GUICtrlCreateGroup($gruppen[$gi] & " (leer: wie Medical Office)", $gx[$gi], $u + 164, $gw, 135)
+		For $j = 0 To 4
+			$kk[$gi][$j] = 0
+			If $texte[$gi][$j] = "" Then ContinueLoop
+			$kk[$gi][$j] = GUICtrlCreateCheckbox($texte[$gi][$j], $gx[$gi] + 12, $u + 184 + 22 * $j, $gw - 30, 20)
+		Next
+		GUICtrlCreateGroup("", -99, -99, 1, 1)
+	Next
+	Local $ok = GUICtrlCreateButton("Eintragen (Enter)", $b - 272, $hoe - 42, 130, 30, $BS_DEFPUSHBUTTON)
+	Local $ab = GUICtrlCreateButton("Abbrechen (Esc)", $b - 134, $hoe - 42, 122, 30)
+	GUICtrlCreateLabel("Enter: markierten Treffer in Medical Office eintragen (2. Stufe, OK dort selbst), Esc: abbrechen; " & _
+			"Tippfehler und Schreibweisen (c/k/z, ae/" & ChrW(228) & ", ph/f ...) werden toleriert; Pfeile im Suchfeld w" & ChrW(228) & "hlen den Treffer", 12, $hoe - 36, $b - 300, 32)
+	GUICtrlSetColor(-1, 0x606060)
+	GUISetState(@SW_SHOW, $g)
+	WinActivate($g)
+	GUICtrlSetState($such, $GUI_FOCUS)
+	; markiert den Suchtext, damit man gleich ueberschreiben kann; 0xB1 = EM_SETSEL
+	GUICtrlSendMsg($such, 0xB1, 0, -1)
+	; Pfeil hoch/runter im Suchfeld bewegen die Markierung in der Trefferliste (Tastenkuerzel nur, solange das Suchfeld
+	; den Fokus hat, sonst gehoeren die Pfeile den anderen Controls)
+	; Enter und Esc ausdruecklich als Tastenkuerzel (ueberall, auch in der Liste; Enter in der aufgeklappten Klappliste
+	; schliesst nur diese)
+	Local $hoch = GUICtrlCreateDummy(), $runter = GUICtrlCreateDummy(), $bhoch = GUICtrlCreateDummy(), $brunter = GUICtrlCreateDummy()
+	Local $enter = GUICtrlCreateDummy(), $esc = GUICtrlCreateDummy()
+	Local $akzImmer[2][2] = [["{ENTER}", $enter], ["{ESC}", $esc]]
+	Local $akz[6][2] = [["{ENTER}", $enter], ["{ESC}", $esc], ["{UP}", $hoch], ["{DOWN}", $runter], ["{PGUP}", $bhoch], ["{PGDN}", $brunter]]
+	Local $akzAn = False, $tipp = ""
+	GUISetAccelerators($akzImmer, $g)
+	Local $erg[7], $fehler = 1, $t = TimerInit(), $treffer = 0, $sel = -2
+	Local $gesucht = Chr(1), $gelesen = Chr(1), $geaendert = TimerInit()
+	; Art des Diagnosetexts; $dtAuto: zuletzt automatisch eingesetzter Text (von Hand geaendert: bleibt stehen)
+	Local $art = "eigen", $dtAuto = $vorgabe, $neuSetzen = False
+	While 1
+		Local $msg = GUIGetMsg(1)
+		If $msg[1] = $g Then
+			If $msg[0] = $enter Then
+				; 0x157 = CB_GETDROPPEDSTATE, 0x14F = CB_SHOWDROPDOWN
+				Local $hPrio = GUICtrlGetHandle($prio)
+				If _SendMessage($hPrio, 0x157) Then
+					_SendMessage($hPrio, 0x14F, 0)
+					ContinueLoop
+				EndIf
+				$msg[0] = $ok
+			EndIf
+			Switch $msg[0]
+				Case $GUI_EVENT_CLOSE, $ab, $esc
+					ExitLoop
+				Case $ok
+					Local $i = _GUICtrlListView_GetNextItem($hLv)
+					If $i < 0 Or Not IsArray($treffer) Or $i >= UBound($treffer) Then
+						Hinweis("Bitte einen Treffer markieren")
+						ContinueLoop
+					EndIf
+					; nicht endstellig: die endstelligen Codes darunter zur Auswahl stellen (der Diagnosetext bleibt)
+					If $treffer[$i][5] = "nicht endstellig" Then
+						If GUICtrlRead($dt) = $dtAuto Then $dtAuto = Chr(1)
+						GUICtrlSetData($such, StringTrimRight($treffer[$i][0], StringRight($treffer[$i][0], 1) = "-" ? 1 : 0))
+						GUICtrlSetState($such, $GUI_FOCUS)
+						ContinueLoop
+					EndIf
+					$erg[0] = $treffer[$i][0]
+					$erg[1] = StringStripWS(GUICtrlRead($dt), 3)
+					$erg[2] = (GUICtrlRead($prio) = $prioVorgabe) ? "" : GUICtrlRead($prio)
+					$erg[3] = StringStripWS(GUICtrlRead($zus), 3)
+					For $gi = 0 To 2
+						$erg[4 + $gi] = ""
+						For $j = 0 To 4
+							If $kk[$gi][$j] And BitAND(GUICtrlRead($kk[$gi][$j]), $GUI_CHECKED) Then $erg[4 + $gi] = $texte[$gi][$j]
+						Next
+					Next
+					$fehler = 0
+					ExitLoop
+				Case $rEigen, $rFund, $rVorg
+					$art = ($msg[0] = $rEigen) ? "eigen" : (($msg[0] = $rFund) ? "fund" : "vorg")
+					$neuSetzen = True
+				Case $hoch, $runter, $bhoch, $brunter
+					If IsArray($treffer) And UBound($treffer) > 0 Then
+						Local $schritt = ($msg[0] = $hoch) ? -1 : (($msg[0] = $runter) ? 1 : (($msg[0] = $bhoch) ? -10 : 10))
+						Local $ni = _GUICtrlListView_GetNextItem($hLv) + $schritt
+						If $ni < 0 Then $ni = 0
+						If $ni > UBound($treffer) - 1 Then $ni = UBound($treffer) - 1
+						_GUICtrlListView_SetItemSelected($hLv, $ni, True, True)
+						_GUICtrlListView_EnsureVisible($hLv, $ni)
+					EndIf
+			EndSwitch
+			; je Gruppe hoechstens ein Kaestchen
+			For $gi = 0 To 2
+				For $j = 0 To 4
+					If $kk[$gi][$j] = 0 Or $msg[0] <> $kk[$gi][$j] Then ContinueLoop
+					If Not BitAND(GUICtrlRead($msg[0]), $GUI_CHECKED) Then ContinueLoop
+					For $q = 0 To 4
+						If $q <> $j And $kk[$gi][$q] Then GUICtrlSetState($kk[$gi][$q], $GUI_UNCHECKED)
+					Next
+				Next
+			Next
+		EndIf
+		Local $imSuch = (ControlGetHandle($g, "", ControlGetFocus($g)) = GUICtrlGetHandle($such))
+		If $imSuch <> $akzAn Then
+			$akzAn = $imSuch
+			GUISetAccelerators($akzAn ? $akz : $akzImmer, $g)
+		EndIf
+		; Suche bei jeder Aenderung, nach 150 ms Ruhe
+		Local $s = GUICtrlRead($such)
+		If $s <> $gelesen Then
+			$gelesen = $s
+			$geaendert = TimerInit()
+		EndIf
+		If $s <> $gesucht And TimerDiff($geaendert) > 150 Then
+			$gesucht = $s
+			Local $r = DiagSuchen($s)
+			If @error Then
+				GUICtrlSetData($info, $r)
+			Else
+				$treffer = $r
+				_GUICtrlListView_BeginUpdate($hLv)
+				_GUICtrlListView_DeleteAllItems($hLv)
+				For $i = 0 To UBound($r) - 1
+					Local $he = ($r[$i][1] = "E") ? "eigen (" & $r[$i][2] & ")" : (($r[$i][1] = "A") ? "Alphabet" : "ICD-10-GM")
+					_GUICtrlListView_AddItem($hLv, $r[$i][0])
+					_GUICtrlListView_AddSubItem($hLv, $i, $r[$i][3], 1)
+					_GUICtrlListView_AddSubItem($hLv, $i, $he, 2)
+					_GUICtrlListView_AddSubItem($hLv, $i, (($r[$i][5] = "") ? "" : "[" & $r[$i][5] & "] ") & $r[$i][4], 3)
+				Next
+				_GUICtrlListView_EndUpdate($hLv)
+				; markiert und mit dem Tastaturfokus, sonst braucht Pfeil runter nach Tab in die Liste zwei Druecke
+				If UBound($r) > 0 Then _GUICtrlListView_SetItemSelected($hLv, 0, True, True)
+				If UBound($r) = 0 Then GUICtrlSetData($info, ($s = "") ? "" : "keine Treffer")
+			EndIf
+			$sel = -2
+		EndIf
+		; Auswahl, Suchtext oder Art geaendert: Vorgabetext zeigen, Diagnosetext nach der gewaehlten Art (solange er nicht
+		; von Hand geaendert wurde; ein Klick auf die Art setzt ihn immer)
+		Local $i = _GUICtrlListView_GetNextItem($hLv)
+		If ($i <> $sel Or $neuSetzen) And IsArray($treffer) Then
+			$sel = $i
+			Local $neu = StringStripWS($gesucht, 3)
+			If $i >= 0 And $i < UBound($treffer) Then
+				GUICtrlSetData($info, $treffer[$i][0] & ": " & (($treffer[$i][4] = "") ? "(nicht im aktuellen ICD-10-GM)" : $treffer[$i][4]) & _
+						(($treffer[$i][5] = "") ? "" : "   [" & $treffer[$i][5] & "]") & _
+						(($treffer[$i][6] = "") ? "" : @CRLF & "Enter zeigt die endstelligen: " & $treffer[$i][6]))
+				; Tipp mit dem ICD-Text unter der markierten Zeile (auch bei Pfeiltasten)
+				$tipp = $treffer[$i][0] & ": " & (($treffer[$i][4] = "") ? "(nicht im aktuellen ICD-10-GM)" : $treffer[$i][4]) & _
+						(($treffer[$i][5] = "") ? "" : @CRLF & "[" & $treffer[$i][5] & "]") & _
+						(($treffer[$i][6] = "") ? "" : @CRLF & "Enter zeigt die endstelligen: " & StringReplace($treffer[$i][6], "; ", @CRLF))
+				DiagTipp($hLv, $i, $tipp)
+				If $art = "fund" Then $neu = $treffer[$i][3]
+				If $art = "vorg" And $treffer[$i][4] <> "" Then $neu = $treffer[$i][4]
+			EndIf
+			If $neuSetzen Or GUICtrlRead($dt) = $dtAuto Then
+				GUICtrlSetData($dt, $neu)
+				$dtAuto = $neu
+			EndIf
+			$neuSetzen = False
+		EndIf
+		If TimerDiff($t) < 3000 And Not WinActive($g) Then WinActivate($g)
+		; Tipp weg, solange ein anderes Fenster vorn ist, danach wieder
+		If $tipp <> "" And Not WinActive($g) Then
+			ToolTip("")
+			$tipp = ""
+			$sel = -2
+		EndIf
+		Sleep(10)
+	WEnd
+	ToolTip("")
+	GUIDelete($g)
+	Return SetError($fehler, 0, $erg)
+EndFunc
+
+; Tipp $text unter der Zeile $i der Liste (rechts neben der Code-Spalte), bzw. darueber, wenn unten kein Platz ist
+Func DiagTipp($hLv, $i, $text)
+	Local $r = _GUICtrlListView_GetItemRect($hLv, $i)
+	Local $pt = DllStructCreate("int X;int Y")
+	$pt.X = $r[0] + 80
+	$pt.Y = $r[3] + 2
+	_WinAPI_ClientToScreen($hLv, $pt)
+	Local $lv = WinGetPos($hLv), $zeilen = UBound(StringSplit($text, @LF, 2))
+	If @error Or $pt.Y < $lv[1] Or $pt.Y > $lv[1] + $lv[3] Then Return ToolTip("")
+	Local $y = $pt.Y
+	If $y + 18 * $zeilen + 10 > @DesktopHeight Then $y = $pt.Y - ($r[3] - $r[1]) - 18 * $zeilen - 14
+	ToolTip($text, $pt.X, $y)
+EndFunc
+
+; traegt die Auswahl ins Fenster der 2. Stufe ein (oeffnet es noetigenfalls ueber "manuelle Eingabe" der 1. Stufe)
+Func DiagEintragen($hVorher, $w)
+	Local $tEin = TimerInit()
+	Local $h2 = WinGetHandle("[CLASS:" & $DiagKlasse2 & "]")
+	If @error Or Not BitAND(WinGetState($h2), 2) Then
+		Local $h1 = WinGetHandle("[CLASS:" & $DiagKlasse1 & "]")
+		If @error Then Return Meldung("Diagnoseerfassung nicht mehr offen")
+		WinActivate($h1)
+		If Not WinWaitActive($h1, "", 2) Then Return Meldung("Diagnoseerfassung laesst sich nicht aktivieren")
+		If Not ControlClick($h1, "", "[CLASS:TmoButton; TEXT:&manuelle Eingabe]") Then Return Meldung("Knopf ""manuelle Eingabe"" nicht gefunden")
+		$h2 = WinWait("[CLASS:" & $DiagKlasse2 & "]", "", 5)
+		If Not $h2 Then Return Meldung("Fenster der Diagnosenerfassung (2. Stufe) erscheint nicht")
+	EndIf
+	WinActivate($h2)
+	If Not WinWaitActive($h2, "", 2) Then Return Meldung("Diagnosenerfassung (2. Stufe) laesst sich nicht aktivieren")
+	Sleep(150)
+	; ICD-Code eintippen und mit Tab bestaetigen, Medical Office fuellt dann den Vorgabetext ein
+	Local $hIcd = DiagControl($h2, "TAlnumEdit", True)
+	If Not $hIcd Then Return Meldung("ICD-Feld nicht gefunden")
+	Local $hText = DiagControl($h2, "TAlnumMemo", True, 1), $hZus = DiagControl($h2, "TAlnumMemo", True, 2)
+	Local $textVorher = $hText ? ControlGetText($h2, "", $hText) : ""
+	ControlFocus($h2, "", $hIcd)
+	ControlSetText($h2, "", $hIcd, "")
+	Send($w[0], 1)
+	Send("{TAB}")
+	; bis der Vorgabetext da ist (oder sich geaendert hat), hoechstens 2 s
+	Local $t = TimerInit()
+	While TimerDiff($t) < 2000
+		Sleep(50)
+		If Not WinActive($h2) Then ExitLoop
+		If $hText And ControlGetText($h2, "", $hText) <> $textVorher And ControlGetText($h2, "", $hText) <> "" Then ExitLoop
+	WEnd
+	If Not WinActive($h2) Then Return Meldung("Medical Office hat nach dem ICD-Code " & $w[0] & " ein anderes Fenster geoeffnet, bitte dort weiter")
+	Sleep(100)
+	If $hText And $w[1] <> "" Then ControlSetText($h2, "", $hText, $w[1])
+	If $hZus And $w[3] <> "" Then ControlSetText($h2, "", $hZus, $w[3])
+	If $w[2] <> "" Then DiagPrioritaet($h2, $w[2])
+	Local $gruppen[3][5] = [["A&kutdiagnose", "Da&uerdiagnose", "a&namnest. Diagnose", "h&istorische Diagnose", "abgeschl&ossene Diagnose"], _
+			["&Gesichert", "&Verdacht auf", "&Zustand nach", "&Ausschluss von", ""], ["&Rechts", "&Links", "&Beiderseits", "", ""]]
+	Local $nicht = ""
+	For $gi = 0 To 2
+		If $w[4 + $gi] = "" Then ContinueLoop
+		If Not DiagKaestchen($h2, $w[4 + $gi], True) Then $nicht &= ", " & StringReplace($w[4 + $gi], "&", "")
+		; die anderen der Gruppe aus (Medical Office tut das nicht immer selbst)
+		For $j = 0 To 4
+			If $gruppen[$gi][$j] <> "" And $gruppen[$gi][$j] <> $w[4 + $gi] Then
+				If Not DiagKaestchen($h2, $gruppen[$gi][$j], False) Then $nicht &= ", " & StringReplace($gruppen[$gi][$j], "&", "") & " aus"
+			EndIf
+		Next
+	Next
+	If $nicht <> "" Then Hinweis("Bitte selbst pruefen: " & StringTrimLeft($nicht, 2), 6000)
+	Protokoll("Diagnosesuche: eingetragen in " & Round(TimerDiff($gLaeuftZeit) / 1000, 1) & " s seit Aufgabenbeginn, davon Eintragen " & _
+			Round(TimerDiff($tEin) / 1000, 1) & " s")
+	Local $okKnopf = "[CLASS:TmoButton; TEXT:OK]"
+	If Einst("Diagnosesuche", "OK", "0") = "1" Then
+		ControlClick($h2, "", $okKnopf)
+	Else
+		ControlFocus($h2, "", $okKnopf)
+	EndIf
+	Return True
+EndFunc
+
+; Kaestchen der 2. Stufe auf $an setzen (per Klick, damit Medical Office es mitbekommt); False, wenn sein Zustand nicht
+; abzulesen ist oder der Klick nicht wirkte
+Func DiagKaestchen($h2, $text, $an)
+	Local $c = ControlGetHandle($h2, "", "[CLASS:TNewCheckBox; TEXT:" & $text & "]")
+	If @error Or Not $c Then Return False
+	; abgelesen wird am Bildschirm: das Fenster muss vorn sein
+	If Not WinActive($h2) Then
+		WinActivate($h2)
+		WinWaitActive($h2, "", 1)
+		Sleep(100)
+	EndIf
+	Local $ist = KaestchenAn($c)
+	If $ist < 0 Then Return DiagKaestchenFehler($text, "verdeckt", $c)
+	If $ist = ($an ? 1 : 0) Then Return True
+	ControlClick($h2, "", $c)
+	Sleep(80)
+	$ist = KaestchenAn($c)
+	If $ist = ($an ? 1 : 0) Then Return True
+	Return DiagKaestchenFehler($text, "nach dem Klick " & $ist, $c)
+EndFunc
+
+; ins Protokoll (Aufrufe.log), was das Kaestchen verdeckt (nur die Fensterklasse, Titel koennen Patientennamen tragen)
+Func DiagKaestchenFehler($text, $grund, $c)
+	Local $p = WinGetPos($c), $pt = DllStructCreate("int X;int Y")
+	If Not @error Then
+		$pt.X = $p[0] + 7
+		$pt.Y = $p[1] + Int($p[3] / 2)
+	EndIf
+	Protokoll("Diagnosesuche: Kaestchen " & StringReplace($text, "&", "") & " " & $grund & ", an der Stelle " & _
+			_WinAPI_GetClassName(_WinAPI_WindowFromPoint($pt)) & ", vorn " & _WinAPI_GetClassName(_WinAPI_GetForegroundWindow()))
+	Return False
+EndFunc
+
+; ist das Kaestchen $c (TNewCheckBox) angekreuzt? 1 / 0, -1 = verdeckt bzw. nicht zu sehen. Es meldet seinen Zustand
+; nicht (BM_GETCHECK immer 0), daher am Bildschirm: Kaestchen links, senkrecht mittig, das Kreuz hat dunkle bzw. blaue
+; Punkte mit wenig Rot und Gruen (gemessen 22.11.26 in der Diagnosenerfassung: angekreuzt 24, leer 0)
+Func KaestchenAn($c)
+	Local $p = WinGetPos($c)
+	If @error Then Return -1
+	Local $ym = $p[1] + Int($p[3] / 2), $pt = DllStructCreate("int X;int Y")
+	$pt.X = $p[0] + 7
+	$pt.Y = $ym
+	If _WinAPI_WindowFromPoint($pt) <> $c Then Return -1
+	; ein Bildschirmfoto des Kaestchens statt 81 einzelner PixelGetColor (die brauchen je einige ms)
+	If Not BildLesen($p[0] + 3, $ym - 4, $p[0] + 11, $ym + 4) Then Return -1
+	Local $n = 0
+	For $x = $p[0] + 3 To $p[0] + 11
+		For $y = $ym - 4 To $ym + 4
+			Local $f = BildFarbe($x, $y)
+			If $f >= 0 And BitAND(BitShift($f, 16), 255) < 150 And BitAND(BitShift($f, 8), 255) < 150 Then $n += 1
+		Next
+	Next
+	$gBild = 0
+	Return ($n >= 8) ? 1 : 0
+EndFunc
+
+; Prioritaet in der Klappliste der 2. Stufe waehlen (Eintrag, der mit $text beginnt) und Medical Office melden
+Func DiagPrioritaet($h2, $text)
+	Local $hCb = DiagControl($h2, "TNewComboBox")
+	If Not $hCb Then Return
+	; 0x14C = CB_FINDSTRING, 0x14E = CB_SETCURSEL; WM_COMMAND mit CBN_SELCHANGE (1) an das Elternfenster
+	Local $i = _SendMessage($hCb, 0x14C, -1, $text, 0, "int", "wstr")
+	If $i < 0 Then Return
+	_SendMessage($hCb, 0x14E, $i)
+	_SendMessage(_WinAPI_GetParent($hCb), 0x111, BitOR(_WinAPI_GetDlgCtrlID($hCb), BitShift(1, -16)), $hCb)
 EndFunc
 
 ; ist das Hauptfenster von Medical Office aktiv? (im Hook, muss schnell sein)
@@ -10370,12 +10999,14 @@ EndFunc
 ; ToolTip an der Maus, weil TrayTip unter Windows 10/11 eine Benachrichtigung ist,
 ; die bei abgeschalteten Benachrichtigungen oder "Nicht stoeren" gar nicht erscheint
 Func Hinweis($txt, $ms = 3000)
+	$gHinweisZahl += 1
 	ToolTip($txt, Default, Default, "MOReiter")
 	AdlibRegister("HinweisWeg", $ms)
 EndFunc
 
 ; wie Hinweis, bleibt aber stehen, bis ToolTip("") oder der naechste Hinweis ihn ersetzt
 Func HinweisStehend($txt)
+	$gHinweisZahl += 1
 	AdlibUnRegister("HinweisWeg")
 	ToolTip($txt, Default, Default, "MOReiter")
 EndFunc
