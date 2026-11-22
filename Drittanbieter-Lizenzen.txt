@@ -1,0 +1,45 @@
+Drittanbieter-Bibliotheken in BmpLesen.exe
+==========================================
+
+BmpLesen.exe (Quelltext: BmpLesen.cpp in diesem Repository, GPL-3.0) ist statisch mit den folgenden
+Bibliotheken gebunden. Weil MuPDF und jbig2dec unter der GNU Affero General Public License 3.0 stehen,
+unterliegt BmpLesen.exe als Ganzes der AGPL-3.0 (vereinbar mit der GPL-3.0 dieses Repositorys,
+Abschnitt 13). Der vollständige Quelltext von BmpLesen.exe ist BmpLesen.cpp mit BmpLesen-Kompilieren.bat
+und BmpLesen-Kompilieren.sh, die die unten genannten Bibliotheken aus MSYS2 (www.msys2.org, Umgebung
+UCRT64) holen und genau so binden wie in der veröffentlichten exe. Damit lässt sich BmpLesen.exe auch
+mit geänderten Fassungen der LGPL-Bibliotheken (glib2, gettext-runtime, graphite2) neu binden.
+
+Die Quelltexte der Bibliotheken in genau diesen Fassungen: Paketrezepte unter
+https://github.com/msys2/MINGW-packages (Ordner mingw-w64-<Name>), Quellpakete unter
+https://repo.msys2.org/mingw/sources/ ; jeweils auch beim Hersteller (unten).
+
+Bibliothek       Fassung (MSYS2)          Lizenz                               Hersteller
+---------------  -----------------------  -----------------------------------  -------------------------------------------
+MuPDF            1.28.5-3                 AGPL-3.0-or-later                    https://mupdf.com (Artifex Software)
+jbig2dec         0.20-1                   AGPL-3.0-or-later                    https://jbig2dec.com (Artifex Software)
+mujs             1.3.11-1                 ISC                                  https://mujs.com (Artifex Software)
+zxing-cpp        3.1.1-1                  Apache-2.0                           https://github.com/zxing-cpp/zxing-cpp
+OpenJPEG         2.5.4-2                  BSD-2-Clause                         https://www.openjpeg.org
+gumbo-parser     0.14.1-1                 Apache-2.0                           https://codeberg.org/gumbo-parser/gumbo-parser
+libjpeg-turbo    3.2.1-1                  IJG, BSD-3-Clause, Zlib              https://libjpeg-turbo.org
+zlib             1.4-2                    Zlib                                 https://zlib.net
+FreeType         2.15.0-1                 FreeType License (FTL)               https://freetype.org
+bzip2            1.0.8-4                  bzip2-1.0.6 (BSD-artig)              https://sourceware.org/bzip2/
+libpng           1.6.59-2                 libpng-2.0                           http://www.libpng.org
+HarfBuzz         15.2.0-1                 MIT                                  https://harfbuzz.github.io
+graphite2        1.3.15-1                 LGPL-2.1-or-later oder MPL-2.0       https://github.com/silnrsi/graphite
+GLib             2.90.1-1                 LGPL-2.1-or-later                    https://gitlab.gnome.org/GNOME/glib
+gettext-runtime  1.0-1                    LGPL-2.1-or-later (libintl)          https://www.gnu.org/software/gettext/
+PCRE2            10.49-2                  BSD-3-Clause                         https://github.com/PCRE2Project/pcre2
+Brotli           1.2.1-1                  MIT                                  https://github.com/google/brotli
+winpthreads      14.0.0.r598-1            MIT, ZPL-2.1                         https://www.mingw-w64.org
+GCC-Laufzeit     (MSYS2 UCRT64)           GPL-3.0 mit GCC Runtime Library      https://gcc.gnu.org
+                                          Exception
+
+Die Lizenztexte stehen in den Quellpaketen der jeweiligen Bibliothek; die der AGPL-3.0:
+https://www.gnu.org/licenses/agpl-3.0.html, der LGPL-2.1: https://www.gnu.org/licenses/lgpl-2.1.html,
+der Apache-2.0: https://www.apache.org/licenses/LICENSE-2.0 .
+
+MOReiter.exe ist mit AutoIt (www.autoitscript.com) aus MOReiter.au3 kompiliert; die AutoIt-Lizenz erlaubt
+die Weitergabe kompilierter Skripte. pdftotext.exe (Xpdf, GPL) ist nicht enthalten, MOReiter lädt es auf
+Wunsch selbst herunter.

@@ -106,8 +106,9 @@ Für Praxen, die die Daten von Medical Office laufend mit Dateilese in eine eige
 ## Voraussetzungen
 
 - Windows mit Medical Office
-- Internet beim ersten Kompilieren: fehlt AutoIt3, lädt `Kompilieren.bat` die portable Fassung von
-  www.autoitscript.com in den Unterordner `AutoIt3` (ohne Installation, ohne Administratorrechte)
+- nur wer selbst aus dem Quelltext kompiliert (s. Einrichten, Weg B): Internet beim ersten Kompilieren; fehlt
+  AutoIt3, lädt `Kompilieren.bat` die portable Fassung von www.autoitscript.com in den Unterordner `AutoIt3`
+  (ohne Installation, ohne Administratorrechte)
 - ein beliebiger Browser für die Links „moreiter:…“ im Patientenlaufzettel (Stufe 6) und das Herunterladen
   von `pdftotext.exe`
 - **Firefox** für das Labor über das Online-Portal (Strg+O, Stufe 4), die Zuckerportale (Strg+L, D, G, Y, E und
@@ -122,23 +123,40 @@ Für Praxen, die die Daten von Medical Office laufend mit Dateilese in eine eige
   `MOReiter-Vorgaben.ini`)
 - für Smart Pix: das Accu-Chek Smart Pix-Lesegerät; für das Scannen gedruckter Medikationspläne (unabhängig von
   MOReiter): ein 2D-Scanner, der die XML-Dateien ebenfalls in den BMP-Ordner legt
-- für Strg+Alt+Ü: `BmpLesen.exe` neben `MOReiter.exe` (nicht im Repo, weil sie mit den eingebundenen Bibliotheken
-  rund 45 MB groß ist): einmal `BmpLesen-Kompilieren.bat` aufrufen; dafür muss MSYS2 (www.msys2.org) installiert
-  sein, die nötigen Pakete (gcc, MuPDF, zxing-cpp) holt die Datei selbst. Die fertige exe ist statisch gebunden und
-  läuft ohne weitere Dateien auf allen PCs; `Einrichten.bat` kopiert sie mit
+- für Strg+Alt+Ü: `BmpLesen.exe` neben `MOReiter.exe`. Sie ist in den fertigen ausführbaren Dateien enthalten (Einrichten, Weg A).
+  Im Quelltext-Repo fehlt sie, weil sie mit den eingebundenen Bibliotheken rund 45 MB groß ist; wer selbst
+  kompiliert, ruft einmal `BmpLesen-Kompilieren.bat` auf (dafür muss MSYS2 von www.msys2.org installiert sein, die
+  nötigen Pakete holt die Datei selbst). Die exe ist statisch gebunden und läuft ohne weitere Dateien auf allen
+  PCs; `Einrichten.bat` kopiert sie mit. Lizenzen der enthaltenen Bibliotheken: `Drittanbieter-Lizenzen.txt`
 
 ## Einrichten
 
+Es gibt zwei Wege; für die meisten Praxen ist A der einfachere. Eine Anmeldung bei GitHub ist für beide nicht nötig.
+
+**Weg A: Fertige ausführbare Dateien (ohne Kompilieren)**
+
+1. **Herunterladen:** rechts auf der Repo-Seite unter „Releases“ das neueste „Fertige ausführbare Dateien – Stand …“ öffnen (oder direkt
+   [https://github.com/libelle17/MOReiter/releases/latest](https://github.com/libelle17/MOReiter/releases/latest))
+   und unter „Assets“ die Datei `MOReiter-<Datum>.zip` herunterladen. Sie enthält alle Dateien des Repos und
+   dazu die fertigen `MOReiter.exe` und `BmpLesen.exe`.
+2. **Freigeben und entpacken:** Rechtsklick auf das ZIP → Eigenschaften → unten „Zulassen“ anhaken → OK
+   (sonst warnt Windows bei jeder Datei aus dem Internet). Dann entpacken, z.B. nach `C:\`; es entsteht der
+   Ordner `C:\MOReiter`.
+3. **Einrichten:** im Ordner `Einrichten.bat` doppelklicken. Meldet die Windows-Sicherheit bzw. SmartScreen eine
+   „unbekannte App“: „Weitere Informationen“ → „Trotzdem ausführen“ (MOReiter überwacht die Tastatur für seine
+   Kürzel, das wirkt auf Virenscanner manchmal verdächtig; der Quelltext liegt offen hier). Weiter mit Schritt 4.
+
+**Weg B: aus dem Quelltext**
+
 1. **Herunterladen:** den grünen Knopf „<> Code“ rechts über der Dateiliste aufklappen und „Download ZIP“
    wählen (nicht der Reiter „Code“ oben links), oder direkt über
-   [https://github.com/libelle17/MOReiter/archive/refs/heads/main.zip](https://github.com/libelle17/MOReiter/archive/refs/heads/main.zip);
-   eine Anmeldung bei GitHub ist nicht nötig.
-2. **Freigeben und entpacken:** Rechtsklick auf das ZIP → Eigenschaften → unten „Zulassen“ anhaken → OK
-   (sonst warnt Windows bei jeder Datei aus dem Internet). Dann entpacken, z.B. nach `C:\MOReiter`.
+   [https://github.com/libelle17/MOReiter/archive/refs/heads/main.zip](https://github.com/libelle17/MOReiter/archive/refs/heads/main.zip).
+2. **Freigeben und entpacken:** wie bei Weg A, z.B. nach `C:\MOReiter`.
 3. **Kompilieren:** `Kompilieren.bat` doppelklicken. Fehlt AutoIt3, lädt es die portable Fassung (einige
-   Sekunden). Meldet die Windows-Sicherheit bzw. SmartScreen eine „unbekannte App“: „Weitere Informationen“ →
-   „Trotzdem ausführen“ (MOReiter überwacht die Tastatur für seine Kürzel, das wirkt auf Virenscanner manchmal
-   verdächtig; der Quelltext liegt offen hier).
+   Sekunden). Zur Meldung der Windows-Sicherheit s. Weg A. Für Strg+Alt+Ü außerdem einmal
+   `BmpLesen-Kompilieren.bat` (braucht MSYS2, s. Voraussetzungen).
+
+**Für beide Wege:**
 4. **Einstellungen:** Beim ersten Mal öffnet sich das Fenster „MOReiter einrichten“. Ankreuzen, was die Praxis
    nutzt (Labor, Ablage und Einordnen der PDFs, Zuckerportale, Smart Pix, Patientenlaufzettel), die Pfade und
    Benutzerkennungen eintragen und OK drücken; was von einem Kästchen abhängt, ist grau, solange es aus ist.
@@ -155,6 +173,22 @@ Für Praxen, die die Daten von Medical Office laufend mit Dateilese in eine eige
 
 Auf weiteren PCs der Praxis: den Ordner samt `MOReiter.exe` und `MOReiter-Praxis.ini` kopieren und
 `Einrichten.bat` starten. Es kopiert beides nach `%APPDATA%\MOReiter` und startet MOReiter von dort.
+
+### Update
+
+Die eigenen Einstellungen (`MOReiter-Praxis.ini` im Ordner, `%APPDATA%\MOReiter\MOReiter.ini` je PC) sind weder im
+ZIP noch im Repo und bleiben bei einem Update erhalten.
+
+- **Weg A:** das neue `MOReiter-<Datum>.zip` aus den Releases herunterladen, freigeben (Rechtsklick →
+  Eigenschaften → „Zulassen“) und in denselben Ordner entpacken (also wieder nach `C:\`, wenn der Ordner
+  `C:\MOReiter` ist), vorhandene Dateien ersetzen. Dann `Einrichten.bat` doppelklicken: Es beendet den laufenden
+  MOReiter, kopiert die neueren Dateien nach `%APPDATA%\MOReiter` und startet ihn neu.
+- **Weg B:** das neue Quelltext-ZIP ebenso in denselben Ordner entpacken und `Kompilieren.bat` doppelklicken
+  (für Strg+Alt+Ü auch `BmpLesen-Kompilieren.bat`, wenn sich `BmpLesen.cpp` geändert hat).
+- **Weitere PCs der Praxis:** dort `Einrichten.bat` aus dem aktualisierten Ordner aufrufen (liegt er im Netz)
+  bzw. den Ordner erneut hinüberkopieren und `Einrichten.bat` starten.
+- Ein Virenscanner, der `MOReiter.exe` beim ersten Mal beanstandet hat, kann das bei jeder neuen Fassung wieder tun
+  (s. Virenschutz oben).
 
 ### Erster Abruf von Labor oder Zuckerportalen (Tampermonkey)
 
@@ -235,6 +269,8 @@ prüfen Sie selbst, ob die Nutzungsbedingungen des jeweiligen Portals diese Art 
 | `BmpLesen.cpp` | Quelltext von `BmpLesen.exe` (C++): Medikationsplan-Code aus PDFs und Bildern lesen, .moc-Dateien entpacken |
 | `BmpLesen-Kompilieren.bat`, `.sh` | erstellen `BmpLesen.exe` mit MSYS2 (UCRT64, MuPDF, zxing-cpp, statisch gebunden) |
 | `BMP-Einstellung-MO.ps1` | stellt in Medical Office für alle Arbeitsplätze das Einlesen aus dem BMP-Ordner ein |
+| `Drittanbieter-Lizenzen.txt` | Bibliotheken in `BmpLesen.exe` mit Fassung, Lizenz und Bezugsquelle des Quelltexts |
+| `Release-Erstellen.ps1` | baut beide exe und stellt die fertigen ausführbaren Dateien (Weg A) als Release auf GitHub bereit |
 | `LICENSE` | Lizenz (GPL-3.0) |
 
 ## Fragen und Fehler

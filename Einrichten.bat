@@ -23,6 +23,9 @@ taskkill /f /im MOReiter.exe >nul 2>&1
 ping -n 2 127.0.0.1 >nul
 :beendet
 if /i "%~1"=="beenden" goto :eof
+rem erstes Einrichten aus dem fertigen Paket (Release-ZIP, ohne Kompilieren.bat): Fenster "MOReiter einrichten"
+if not exist MOReiter-Praxis.ini if exist MOReiter.exe echo Erstes Einrichten: Fenster "MOReiter einrichten" ...
+if not exist MOReiter-Praxis.ini if exist MOReiter.exe start "" /wait "%~dp0MOReiter.exe" Praxis
 :starten
 if not exist MOReiter.exe (echo MOReiter.exe fehlt, bitte zuerst Kompilieren.bat aufrufen & pause & goto :eof)
 echo Kopiere MOReiter nach %APPDATA%\MOReiter und starte es dort ...

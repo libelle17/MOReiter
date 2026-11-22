@@ -19,3 +19,6 @@ Tastenwahl-Strg-oder-StrgAlt.txt
 
 # Medikationsplan-Leser (entsteht mit BmpLesen-Kompilieren.bat, statisch gebunden, ca. 45 MB)
 BmpLesen.exe
+
+# fertige Pakete von Release-Erstellen.ps1
+Release/
