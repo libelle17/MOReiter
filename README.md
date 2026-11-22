@@ -50,7 +50,7 @@ s. `[Allgemein] Zugang=` in `MOReiter-Vorgaben.ini`):
   (z.B. „Fibularisvenenthrombose“, „Schultersyndrom“): fehlertolerante Suche beim Tippen in den eigenen
   Diagnosetexten der Praxis, im Alphabetischen Verzeichnis und im ICD-10-GM (Stammdaten von Medical Office), mit
   Vorgabetext; trägt ICD-Code, eigenen oder Vorgabetext und die Zusätze (Priorität, Zusatztext, Status, Sicherheit,
-  Seite) in die 2. Stufe der Diagnoseerfassung ein,
+  Seite) in die 2. Stufe der Diagnoseerfassung ein, speichert und schließt die Diagnoseerfassung,
 - Accu-Chek Smart Pix: Patient wählen bzw. Patientenliste mit Medical Office abgleichen.
 
 ## 2. Unverschlüsselter Dateispeicher

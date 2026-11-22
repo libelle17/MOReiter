@@ -2266,8 +2266,8 @@ EndFunc
 ; Strg+Alt+S in der Diagnoseerfassung (beide Stufen), und automatisch, wenn die Suche der 1. Stufe nach Enter nichts
 ; findet ([Diagnosesuche] Automatisch=0 schaltet das ab). Gesucht wird in MOReiter-Diagnosesuche.ps1 (eingebettet,
 ; laeuft als PowerShell im Hintergrund, s. dort); eingetragen wird ueber das Fenster der 2. Stufe von Medical Office
-; ("manuelle Eingabe"): ICD-Code, Diagnosetext, Zusatztext, Prioritaet, Status, Sicherheit, Seite. OK drueckt der
-; Benutzer selbst ([Diagnosesuche] OK=1: MOReiter drueckt es).
+; ("manuelle Eingabe"): ICD-Code, Diagnosetext, Zusatztext (getippt und geprueft), Prioritaet, Status, Sicherheit, Seite;
+; ist alles uebertragen, drueckt MOReiter OK und schliesst die 1. Stufe ([Diagnosesuche] OK=0 bzw. Schliessen=0: nicht).
 
 ; ist eine der beiden Stufen der Diagnoseerfassung vorn? (im Hook, muss schnell sein)
 Func DiagStufeAktiv()
@@ -2562,7 +2562,7 @@ Func DiagSuchFenster($vorgabe)
 	Next
 	Local $ok = GUICtrlCreateButton("Eintragen (Enter)", $b - 272, $hoe - 42, 130, 30, $BS_DEFPUSHBUTTON)
 	Local $ab = GUICtrlCreateButton("Abbrechen (Esc)", $b - 134, $hoe - 42, 122, 30)
-	GUICtrlCreateLabel("Enter: markierten Treffer in Medical Office eintragen (2. Stufe, OK dort selbst), Esc: abbrechen; " & _
+	GUICtrlCreateLabel("Enter: markierten Treffer in Medical Office eintragen, speichern und die Diagnoseerfassung schlie" & ChrW(223) & "en, Esc: abbrechen; " & _
 			"Tippfehler und Schreibweisen (c/k/z, ae/" & ChrW(228) & ", ph/f ...) werden toleriert; Pfeile im Suchfeld w" & ChrW(228) & "hlen den Treffer", 12, $hoe - 36, $b - 300, 32)
 	GUICtrlSetColor(-1, 0x606060)
 	GUISetState(@SW_SHOW, $g)
@@ -2768,8 +2768,10 @@ Func DiagEintragen($hVorher, $w)
 	WEnd
 	If Not WinActive($h2) Then Return Meldung("Medical Office hat nach dem ICD-Code " & $w[0] & " ein anderes Fenster geoeffnet, bitte dort weiter")
 	Sleep(100)
-	If $hText And $w[1] <> "" Then ControlSetText($h2, "", $hText, $w[1])
-	If $hZus And $w[3] <> "" Then ControlSetText($h2, "", $hZus, $w[3])
+	; Text und Zusatztext tippen: per WM_SETTEXT gesetzt, zeigte Medical Office sie zwar, speicherte aber den Vorgabetext
+	Local $fehlt = ""
+	If $hText And $w[1] <> "" And Not DiagTippen($h2, $hText, $w[1]) Then $fehlt &= ", Text"
+	If $hZus And $w[3] <> "" And Not DiagTippen($h2, $hZus, $w[3]) Then $fehlt &= ", Zusatztext"
 	If $w[2] <> "" Then DiagPrioritaet($h2, $w[2])
 	Local $gruppen[3][5] = [["A&kutdiagnose", "Da&uerdiagnose", "a&namnest. Diagnose", "h&istorische Diagnose", "abgeschl&ossene Diagnose"], _
 			["&Gesichert", "&Verdacht auf", "&Zustand nach", "&Ausschluss von", ""], ["&Rechts", "&Links", "&Beiderseits", "", ""]]
@@ -2784,16 +2786,44 @@ Func DiagEintragen($hVorher, $w)
 			EndIf
 		Next
 	Next
-	If $nicht <> "" Then Hinweis("Bitte selbst pruefen: " & StringTrimLeft($nicht, 2), 6000)
+	If $nicht <> "" Then $fehlt &= ", " & $nicht
 	Protokoll("Diagnosesuche: eingetragen in " & Round(TimerDiff($gLaeuftZeit) / 1000, 1) & " s seit Aufgabenbeginn, davon Eintragen " & _
 			Round(TimerDiff($tEin) / 1000, 1) & " s")
 	Local $okKnopf = "[CLASS:TmoButton; TEXT:OK]"
-	If Einst("Diagnosesuche", "OK", "0") = "1" Then
-		ControlClick($h2, "", $okKnopf)
-	Else
+	; nicht alles uebertragen oder [Diagnosesuche] OK=0: der Benutzer prueft und drueckt OK selbst
+	If $fehlt <> "" Or Einst("Diagnosesuche", "OK", "1") <> "1" Then
 		ControlFocus($h2, "", $okKnopf)
+		If $fehlt <> "" Then Hinweis("Bitte selbst pr" & ChrW(252) & "fen und mit OK speichern: " & StringTrimLeft($fehlt, 2), 8000)
+		Return True
 	EndIf
+	; speichern; bleibt das Fenster offen (Rueckfrage, Pflichtfeld), uebernimmt der Benutzer
+	ControlClick($h2, "", $okKnopf)
+	If Not WinWaitClose($h2, "", 5) Then Return Meldung("Medical Office hat die Diagnose noch nicht gespeichert, bitte im Fenster nachsehen")
+	; danach die Diagnoseerfassung (1. Stufe) schliessen wie mit Esc ([Diagnosesuche] Schliessen=0: offen lassen)
+	If Einst("Diagnosesuche", "Schliessen", "1") <> "1" Then Return True
+	Local $h1 = WinWait("[CLASS:" & $DiagKlasse1 & "]", "", 3)
+	If Not $h1 Then Return True
+	WinActivate($h1)
+	If Not WinWaitActive($h1, "", 2) Then Return True
+	Sleep(200)
+	If Not ControlClick($h1, "", "[CLASS:TmoButton; TEXT:Schlie" & ChrW(223) & "en]") Then Send("{ESC}")
+	WinWaitClose($h1, "", 3)
 	Return True
+EndFunc
+
+; tippt $text in das Textfeld $hFeld der 2. Stufe (vorhandenen Text ersetzen) und prueft ihn; True, wenn er dasteht
+Func DiagTippen($h2, $hFeld, $text)
+	If Not WinActive($h2) Then
+		WinActivate($h2)
+		If Not WinWaitActive($h2, "", 1) Then Return False
+	EndIf
+	ControlFocus($h2, "", $hFeld)
+	Sleep(50)
+	Send("^{HOME}^+{END}{DEL}")
+	Sleep(50)
+	Send(StringRegExpReplace($text, "[\r\n]+", " "), 1)
+	Sleep(150)
+	Return StringStripWS(StringRegExpReplace(ControlGetText($h2, "", $hFeld), "\s+", " "), 3) = StringStripWS(StringRegExpReplace($text, "\s+", " "), 3)
 EndFunc
 
 ; Kaestchen der 2. Stufe auf $an setzen (per Klick, damit Medical Office es mitbekommt); False, wenn sein Zustand nicht

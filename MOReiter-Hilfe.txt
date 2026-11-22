@@ -145,7 +145,8 @@ Strg+Alt+S          in der Diagnoseerfassung (1. und 2. Stufe): Fenster "MOReite
                     Priorität, freier Zusatztext, Status, Sicherheit, Seite mit denselben Buchstaben wie in
                     Medical Office (leer: wie Medical Office es vorgibt).
                     Enter trägt ein: "manuelle Eingabe" der 1. Stufe (bzw. die offene 2. Stufe), ICD-Code,
-                    Text und Zusätze; OK in Medical Office drückt man selbst. Bei einem nicht endstelligen
+                    Text und Zusätze (Sanduhr), dann OK und Schließen der Diagnoseerfassung; ließ sich etwas
+                    nicht übertragen, bleibt die 2. Stufe zum Prüfen offen. Bei einem nicht endstelligen
                     Code zeigt Enter stattdessen die endstelligen darunter. Esc bricht ab.
 
 
@@ -468,7 +469,8 @@ gilt der eingebaute Wert. Alle drei haben denselben Aufbau; Kalibrieren schreibt
 [Diagnosen]   Reihenfolge=Zeilen zeilenweise statt spaltenweise zählen
               KnopfFarbe, Toleranz   Farbe der Kurzwahl-Knöpfe
 [Diagnosesuche]  Automatisch=1 (0: nur Strg+Alt+S), Warten=1200 ms auf die Treffer der 1. Stufe nach Enter,
-                 OK=1: MOReiter drückt OK in der 2. Stufe selbst, Stunden=20: so alt darf der
+                 OK=0: OK in der 2. Stufe selbst drücken, Schliessen=0: 1. Stufe danach offen lassen,
+                 Stunden=20: so alt darf der
                  Zwischenspeicher %APPDATA%\MOReiter\Diagnosen.tsv werden
 [Tagesuebersicht]  BereichX, NameX, Warten, BereichWarten, BereichRahmen
 [Briefversand]     EmpfaengerX, EmpfaengerY; Betreff, Empfaenger, Vorschau = Control in AutoIt-
