@@ -15,11 +15,12 @@ $hinten = Invoke-Git rev-list --count "HEAD..origin/main"; $vorn = Invoke-Git re
 if ($hinten -ne "0" -or $vorn -ne "0") { throw "HEAD und origin/main sind verschieden (pull bzw. push fehlt)." }
 
 Write-Host "Kompiliere MOReiter.exe ..."
-cmd /c "Kompilieren.bat < nul"
+# mit Pfad: ist NoDefaultCurrentDirectoryInExePath gesetzt, findet cmd die bat im aktuellen Ordner sonst nicht
+cmd /c "`"$PSScriptRoot\Kompilieren.bat`" < nul"
 if (-not (Test-Path MOReiter.exe) -or (Get-Item MOReiter.exe).LastWriteTime -lt (Get-Date).AddMinutes(-10)) { throw "MOReiter.exe wurde nicht neu kompiliert." }
 if (-not $OhneBmpLesen) {
 	Write-Host "Kompiliere BmpLesen.exe (MSYS2) ..."
-	cmd /c "BmpLesen-Kompilieren.bat < nul"
+	cmd /c "`"$PSScriptRoot\BmpLesen-Kompilieren.bat`" < nul"
 	if (-not (Test-Path BmpLesen.exe) -or (Get-Item BmpLesen.exe).LastWriteTime -lt (Get-Date).AddMinutes(-30)) { throw "BmpLesen.exe wurde nicht neu kompiliert." }
 }
 
