@@ -184,10 +184,11 @@ eingebettete Fassung wieder an.
 ### Für die Eintragung der Fremdmedikamentenpläne
 
 Damit Medical Office die Medikationspläne aus dem BMP-Ordner (Strg+Alt+Ü bzw. 2D-Scanner) im Dosierplan mit Strg+L
-übernimmt, muss an jedem Arbeitsplatz in der Datenpflege von Medical Office (Einstellungen zum Dosierplan)
+übernimmt, muss an jedem Arbeitsplatz im MO-Datenpflegesystem → Arbeitsplatz → Allgemein, Reiter „Im-/Export“,
+Abschnitt „Barcodescanner“
 
-- beim Barcodescanner „Dateiauswahl“ angekreuzt und
-- als Dateipfad der BMP-Ordner eingetragen sein (derselbe wie `[BMP] Ordner=`, z.B. `P:\BMP\`).
+- „Dateiauswahl“ markiert und
+- unter „Dateipfad (optional)“ der BMP-Ordner eingetragen sein (derselbe wie `[BMP] Ordner=`, z.B. `P:\BMP\`).
 
 Medical Office speichert das je PC. Der BMP-Ordner muss deshalb auf allen PCs unter demselben Pfad erreichbar sein,
 am besten als gemeinsamer Netzordner. Zur Vereinfachung kann ggf. das Skript `BMP-Einstellung-MO.ps1` verwendet
