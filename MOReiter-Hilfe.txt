@@ -87,7 +87,10 @@ b, e               schnell nacheinander (innerhalb 0,6 s) in der Liste der Karte
                     eArztbrief angelegt (q, e, a), der Text dort eingefügt und mit F2 gespeichert.
                     Esc bricht ab; geht etwas schief, steht der Brieftext noch in der Zwischenablage,
                     sonst kommt deren alter Inhalt zurück. Ein b ohne folgendes e kommt mit kurzer
-                    Verzögerung wie getippt an; in Eingabefeldern gilt b, e nicht
+                    Verzögerung wie getippt an; in Eingabefeldern gilt b, e nicht. Das b zählt nur nach einer
+                    halben Sekunde ohne Tastendruck, mitten im Tippen also nicht. Während des Einfügens ist die
+                    Tastatur gesperrt (nur Esc bricht ab), damit nichts Getipptes in die gewechselten Fenster gerät.
+                    Denselben Brief ein zweites Mal einzufügen geht nur nach Rückfrage (per Maus zu beantworten)
 Strg+Alt+Ü          Medikationsplan (bundeseinheitlicher Medikationsplan) als XML-Datei nach P:\BMP, wie vom
                     BMP-Scanner, um die Medikamente dann in Medical Office im Dosierplan mit Strg+L zu übernehmen
                     (Barcodescanner „Dateiauswahl“, s. BMP-Einstellung-MO.ps1): in der Karteikarte aus
@@ -483,7 +486,8 @@ gilt der eingebaute Wert. Alle drei haben denselben Aufbau; Kalibrieren schreibt
                    BMP-Einstellung-MO.ps1 auch in Medical Office als Pfad der Dateiauswahl einträgt (nicht
                    erreichbar: \\linux1\daten\Patientendokumente\BMP), MODateien= Dateispeicher von Medical Office
                    (leer = \\wser\indamed\dat\files), Warten=120 s
-[BriefEinfuegen]   Folge=be (zwei Buchstaben, leer = aus), Zeit=600 ms zwischen beiden; Kuerzel=qea der
+[BriefEinfuegen]   Folge=be (zwei Buchstaben, leer = aus), Zeit=600 ms zwischen beiden, VorPause=500 ms ohne
+                   Tastendruck vor dem ersten (0 = immer); Kuerzel=qea der
                    Vorlage; Warten=10000 ms auf das Brieffenster, Pause=500 ms vor und nach dem Einfügen;
                    Fenster=TDocumentForm Klasse des Brieffensters (sonst eins mit Textfeld TWPRichText)
 

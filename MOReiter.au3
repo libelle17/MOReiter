@@ -126,7 +126,10 @@
 ;                              im offenen Word- bzw. LibreOffice-Fenster mit dem juengsten Arztbrief des Patienten ("PID n,
 ;                              Arztbrief vom TT.MM.JJ hhmmss" im Titel) alles markieren und kopieren, in MO einen Brief
 ;                              aus der Vorlage eArztbrief anlegen (Kuerzel q e a), einfuegen, F2; Esc bricht ab.
-;                              Kommt das e nicht rechtzeitig, erreichen das b und die naechste Taste MO wie getippt
+;                              Kommt das e nicht rechtzeitig, erreichen das b und die naechste Taste MO wie getippt;
+;                              das b zaehlt nur nach VorPause=500 ms ohne Tastendruck (nicht mitten im Tippen); waehrend
+;                              des Ablaufs ist die Tastatur gesperrt (nur Esc); derselbe Brief ein zweites Mal nur nach
+;                              Rueckfrage
 ;            Strg+Alt+Ue       Medikationsplan (BMP) als XML nach P:\BMP (BmpErzeugen, BmpLesen.exe): in der Karteikarte aus
 ;                              dem Dokument der markierten Zeile (Texterkennung Datum/Uhrzeit, Dateien aus medoff),
 ;                              im FreeCommander (Alt+Einfg) bzw. Explorer aus den markierten Dateien
@@ -290,8 +293,15 @@ Const $defFolgeZeit = 2000 ; ms, eine laengere Pause zwischen zwei Ziffern begin
 ; Brief einfuegen: b, e schnell nacheinander in der Liste der Karteikarte ([BriefEinfuegen] Folge=, Zeit= ms, 0 = aus);
 ; virtuelle Tastencodes beider Buchstaben, Zeitpunkt des zurueckgehaltenen ersten (0 = keiner) und dessen Scancode;
 ; Kuerzel der Briefvorlage, die MOReiter dann in der Karteikarte tippt
-Const $defBEFolge = "be", $defBEZeit = 600, $defBEKuerzel = "qea", $defBEWarten = 10000, $defBEPause = 500
-Global $gBEErst = 0, $gBEZweit = 0, $gBEZeit = 0, $gBEOffen = 0, $gBEScan = 0
+Const $defBEFolge = "be", $defBEZeit = 600, $defBEKuerzel = "qea", $defBEWarten = 10000, $defBEPause = 500, $defBEVorPause = 500
+Global $gBEErst = 0, $gBEZweit = 0, $gBEZeit = 0, $gBEOffen = 0, $gBEScan = 0, $gBEVorPause = $defBEVorPause
+; letzter echter Tastendruck (ausser Strg, Alt, Umsch): b zaehlt nur nach [BriefEinfuegen] VorPause= ms Ruhe, damit
+; ein b, e mitten im fluessigen Tippen den Brief nicht einfuegt
+Global $gTasteZeit = 0
+; zuletzt eingefuegter Arztbrief ("PID n, Arztbrief vom TT.MM.JJ hhmmss") und wann: ein zweites Mal nur nach Rueckfrage
+Global $gBEEingefuegt = "", $gBEEingefuegtUm = ""
+; solange MOReiter Fenster wechselt und Tasten einspeist (Brief einfuegen): echte Tasten verschlucken, Esc bricht ab
+Global $gTastenSperre = False
 ; Einblendung: Fenster mit den Schildchen, zugehoeriges Fenster und dessen Kurzwahl-Knoepfe,
 ; Beginn des Haltens von Strg+Alt (0 = nicht gehalten), schon versucht
 Global $gEinblendung = 0, $gEinblendungWnd = 0, $gEinblendungKnoepfe = 0, $gHaltStart = 0, $gEinblendungVersucht = False
@@ -429,6 +439,8 @@ While 1
 		$gBEOffen = 0
 		BENachliefern()
 	EndIf
+	; Tastensperre nie ueber das Ende der Aufgabe hinaus
+	If $gTastenSperre And $gLaeuft = "" And $gAufgabe = "" Then $gTastenSperre = False
 	If $gAufgabe <> "" Then
 		Local $aufgabe = $gAufgabe
 		$gAufgabe = ""
@@ -533,6 +545,23 @@ Func TastenHook($nCode, $wParam, $lParam)
 				Return 1
 			EndIf
 		Else
+			; Ruhe vor dieser Taste (fuer b, e), automatische Wiederholung und Strg/Alt/Umsch zaehlen nicht als Tippen
+			Local $ruhe = TimerDiff($gTasteZeit)
+			If Not (($vk >= 0x10 And $vk <= 0x12) Or ($vk >= 0xA0 And $vk <= 0xA5)) And Not StringInStr($gUnten, "," & $vk & ",") Then $gTasteZeit = TimerInit()
+			; Tastensperre (Brief einfuegen): echte Tasten kaemen sonst mitten in die eingespeisten (z.B. als Strg+E in
+			; Word/LibreOffice) bzw. in gerade gewechselte Fenster; Esc bricht ab, Strg+Alt+Esc startet neu. Das Loslassen
+			; geht weiter, damit nichts haengen bleibt
+			If $gTastenSperre Then
+				If $vk = 0x1B Then
+					If StrgAlt() Then
+						$gNeustartWeg = "Hook"
+						$gNeustart = True
+					Else
+						$gSucheAbbruch = True
+					EndIf
+				EndIf
+				Return 1
+			EndIf
 			; b, e in der Karteikarte: das b wird zurueckgehalten; folgt rechtzeitig das e, wird der Brief eingefuegt,
 			; sonst kommen das b und die naechste Taste in dieser Reihenfolge doch noch an
 			If $gBEOffen Then
@@ -550,7 +579,7 @@ Func TastenHook($nCode, $wParam, $lParam)
 				DllCall("user32.dll", "none", "keybd_event", "byte", $vk, "byte", $kb.scanCode, "dword", BitAND($kb.flags, 1), "ulong_ptr", $Kennung)
 				Return 1
 			EndIf
-			If $vk = $gBEErst And $gBEZeit > 0 And $gLaeuft = "" And $gAufgabe = "" And OhneModifier() And KarteiFokus() Then
+			If $vk = $gBEErst And $gBEZeit > 0 And $ruhe >= $gBEVorPause And $gLaeuft = "" And $gAufgabe = "" And OhneModifier() And KarteiFokus() Then
 				If Not StringInStr($gUnten, "," & $vk & ",") Then $gUnten &= "," & $vk & ","
 				$gBEScan = $kb.scanCode
 				$gBEOffen = TimerInit()
@@ -1427,12 +1456,27 @@ Func BriefEinfuegen()
 	Local $hWord = BriefWordFenster($pid)
 	If Not $hWord Then Return Meldung("Brief einfuegen: kein offener Arztbrief zu Pat. " & $pid & " in Word oder LibreOffice" & @CRLF & _
 			"(Fenstertitel mit ""PID " & $pid & ", Arztbrief vom TT.MM.JJ hhmmss"")")
-	Local $alt = AblageSichern(), $altOk = Not @error
+	Local $brief = StringRegExp(WinGetTitle($hWord), "PID " & $pid & ", Arztbrief vom \d{1,2}\.\d{1,2}\.\d{2} \d{6}", 1)
+	$brief = @error ? "" : $brief[0]
+	; ab hier keine echten Tasten mehr (auch nicht in die Rueckfrage: ein getipptes j beantwortete sie sonst)
 	$gSucheAbbruch = False
+	$gTastenSperre = True
+	If $brief <> "" And $brief == $gBEEingefuegt Then
+		Local $antwort = MsgBox(4 + 48 + 256 + 262144, "MOReiter - Brief einfuegen", "Dieser Arztbrief wurde um " & $gBEEingefuegtUm & _
+				" schon in Medical Office eingefuegt." & @CRLF & @CRLF & "Noch einmal einfuegen?" & @CRLF & @CRLF & _
+				"(bitte mit der Maus waehlen, die Tastatur ist bis dahin gesperrt)")
+		If $antwort <> 6 Then
+			$gTastenSperre = False
+			Return Meldung("Brief einfuegen: nicht noch einmal eingefuegt")
+		EndIf
+		$gSucheAbbruch = False
+	EndIf
+	Local $alt = AblageSichern(), $altOk = Not @error
 	$gSucheLaeuft = True
-	HinweisStehend("Brief einfuegen ... Esc bricht ab")
-	Local $ok = BriefEinfuegenAblauf($hMO, $hWord)
+	HinweisStehend("Brief einfuegen ... Tastatur gesperrt, Esc bricht ab")
+	Local $ok = BriefEinfuegenAblauf($hMO, $hWord, $brief)
 	$gSucheLaeuft = False
+	$gTastenSperre = False
 	If $gSucheAbbruch Then
 		$gSucheAbbruch = False
 		Return Meldung("Brief einfuegen abgebrochen (Esc); der Brieftext steht ggf. in der Zwischenablage")
@@ -1444,7 +1488,7 @@ Func BriefEinfuegen()
 	Return True
 EndFunc
 
-Func BriefEinfuegenAblauf($hMO, $hWord)
+Func BriefEinfuegenAblauf($hMO, $hWord, $brief)
 	Local $pause = Int(Einst("BriefEinfuegen", "Pause", $defBEPause))
 	; Word bzw. LibreOffice: alles markieren und kopieren
 	If Not MetVorn($hWord) Then Return Meldung("Brief einfuegen: Fenster des Arztbriefs laesst sich nicht aktivieren")
@@ -1484,6 +1528,11 @@ Func BriefEinfuegenAblauf($hMO, $hWord)
 	Local $hText = ControlGetHandle($hEd, "", "[CLASS:TWPRichText; INSTANCE:1]")
 	If Not @error Then ControlFocus($hEd, "", $hText)
 	TasteEinspeisen(0x56, False, True) ; Strg+V
+	; ab jetzt steht der Text in Medical Office: ein weiteres Mal nur nach Rueckfrage
+	If $brief <> "" Then
+		$gBEEingefuegt = $brief
+		$gBEEingefuegtUm = @HOUR & ":" & @MIN
+	EndIf
 	Sleep($pause)
 	If $gSucheAbbruch Then Return False
 	If Not MetVorn($hEd) Then Return Meldung("Brief einfuegen: Brieffenster nicht mehr vorn, nicht gespeichert")
@@ -3021,6 +3070,7 @@ Func AufrufeLaden()
 	; Brief einfuegen: zwei Buchstaben a-z, sonst aus
 	Local $beFolge = StringLower(StringStripWS(Einst("BriefEinfuegen", "Folge", $defBEFolge), 8))
 	$gBEZeit = StringRegExp($beFolge, "^[a-z]{2}$") ? Int(Einst("BriefEinfuegen", "Zeit", $defBEZeit)) : 0
+	$gBEVorPause = Int(Einst("BriefEinfuegen", "VorPause", $defBEVorPause))
 	If $gBEZeit > 0 Then
 		$gBEErst = Asc(StringUpper(StringLeft($beFolge, 1)))
 		$gBEZweit = Asc(StringUpper(StringRight($beFolge, 1)))

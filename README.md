@@ -98,7 +98,8 @@ Für Praxen, die die Daten von Medical Office laufend mit Dateilese in eine eige
   aus `[Aufrufe]`), auch in der Tagesübersicht mit dem Patienten der Zeile, auf der der Tastaturcursor sitzt,
 - Arztbrief übernehmen: b, e schnell nacheinander in der Karteikarte kopiert den ganzen Text des jüngsten offenen
   Arztbriefs (Word oder LibreOffice, von Dateilese angelegt) des Patienten in einen neuen Brief aus der Vorlage
-  eArztbrief (q, e, a) und speichert mit F2,
+  eArztbrief (q, e, a) und speichert mit F2; nicht mitten im Tippen (vor dem b eine halbe Sekunde Ruhe), mit gesperrter
+  Tastatur während des Ablaufs (Esc bricht ab) und denselben Brief ein zweites Mal nur nach Rückfrage,
 - BMI-Anzeige aus der Karteikarte (Strg+Alt+B, M) nimmt Gewicht und Größe zuerst aus quelle, auch aus alten Anamnesebögen,
 - Laborbefunde und andere abgelegte PDFs werden auf Wunsch auch in quelle eingetragen (`[Dokumente] Datenbank=1`),
 - Smart Pix-Abgleich auch gegen die Patienten in quelle.
