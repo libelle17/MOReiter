@@ -103,8 +103,13 @@ Für Praxen, die die Daten von Medical Office laufend mit Dateilese in eine eige
 - Windows mit Medical Office
 - Internet beim ersten Kompilieren: fehlt AutoIt3, lädt `Kompilieren.bat` die portable Fassung von
   www.autoitscript.com in den Unterordner `AutoIt3` (ohne Installation, ohne Administratorrechte)
-- für Labor und Zuckerportale: Firefox; das Add-on Tampermonkey und die Benutzerskripte bietet MOReiter
-  beim ersten Abruf selbst zur Installation an
+- ein beliebiger Browser für die Links „moreiter:…“ im Patientenlaufzettel (Stufe 6) und das Herunterladen
+  von `pdftotext.exe`
+- **Firefox** für das Labor über das Online-Portal (Strg+O, Stufe 4), die Zuckerportale (Strg+L, D, G, Y, E und
+  Strg+Z, Stufe 5) und die Einrichtung der Benutzerskripte (Strg+Umsch+T); auch wenn dieselben Abrufe über einen
+  Link im Patientenlaufzettel ausgelöst werden. MOReiter startet dafür `firefox.exe`, die Arbeit auf den
+  Webseiten machen Benutzerskripte im Add-on Tampermonkey, und die Kennwörter kommen aus dem Kennwortspeicher von
+  Firefox. Tampermonkey und die Benutzerskripte bietet MOReiter beim ersten Abruf selbst zur Installation an
 - für den Berichtszeitraum in den Dateinamen der Zuckerberichte: `pdftotext.exe` aus den kostenlosen Xpdf-Werkzeugen
   (www.xpdfreader.com); fehlt es, lädt MOReiter es beim Einrichten auf Wunsch selbst herunter
 - für Strg+Z, Strg+Umsch+F, Strg+Alt+D, BMI-Anzeige, Strg+Alt+Ü in der Karteikarte und den Smart Pix-Abgleich: Lesezugriff
@@ -164,8 +169,8 @@ Die Arbeit auf den Webseiten machen kleine Benutzerskripte im Firefox-Add-on Tam
    schließt sich. Ist ein Skript schon aktuell („Neu installieren“), den Tab einfach schließen.
 4. **Anmelden:** Die Kennwörter kommen aus dem Kennwortspeicher von Firefox, MOReiter speichert keine. Also
    bei jedem Portal einmal von Hand anmelden und Firefox das Kennwort speichern lassen.
-5. **Patientenlaufzettel** (nur mit Dateilese): Beim ersten Klick auf einen MOReiter-Link fragt Firefox, ob er
-   MOReiter öffnen darf: „Immer erlauben“ anhaken und „Link öffnen“.
+5. **Patientenlaufzettel** (nur mit Dateilese): Beim ersten Klick auf einen MOReiter-Link fragt der Browser, ob er
+   MOReiter öffnen darf: dauerhaft erlauben (in Firefox „Immer erlauben“ anhaken und „Link öffnen“).
 
 ## Einstellungen
 
