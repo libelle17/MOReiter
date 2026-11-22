@@ -123,6 +123,9 @@
 ;                              Arztbrief vom TT.MM.JJ hhmmss" im Titel) alles markieren und kopieren, in MO einen Brief
 ;                              aus der Vorlage eArztbrief anlegen (Kuerzel q e a), einfuegen, F2; Esc bricht ab.
 ;                              Kommt das e nicht rechtzeitig, erreichen das b und die naechste Taste MO wie getippt
+;            Strg+Alt+Ue       Medikationsplan (BMP) als XML nach P:\BMP (BmpErzeugen, BmpLesen.exe): in der Karteikarte aus
+;                              dem Dokument der markierten Zeile (Texterkennung Datum/Uhrzeit, Dateien aus medoff),
+;                              im FreeCommander (Alt+Einfg) bzw. Explorer aus den markierten Dateien
 ;            Alt+W             im Medikamentenkatalog: Klappliste "Alle Wirkstaerken" aufklappen
 ;            Strg+Alt+Umsch+D  Liste der Controls im aktiven Fenster (Klasse, Nummer, Text, Lage) in die
 ;                              Zwischenablage und nach %APPDATA%\MOReiter\Fenster.txt, zum Einrichten neuer Tasten
@@ -210,6 +213,9 @@ Global $gMetWarten = 0, $gMetAnzeige = False
 ; 21.11.26: Strg+Alt+B, dann M (BMI): Beginn des Wartens auf die zweite Taste (0 = keins, Dauer wie $MetWartenMs), ob
 ; dessen Hinweis steht; wie lange die BMI-Anzeige stehen bleibt ([BMI] Anzeige=ms)
 Global $gBWarten = 0, $gBAnzeige = False
+; 22.11.26: Strg+Alt+Ue (Medikationsplan als XML, BmpErzeugen): virtueller Tastencode des Ue nach dem Tastaturlayout
+; (deutsch VK_OEM_1), Ablagen im Dateispeicher von Medical Office und deren Wurzel (BmpMODatei)
+Global $gUeVk = UeTaste(), $gBmpAblagen = 0, $gBmpAblagenWurzel = ""
 Const $defBMIAnzeige = 15000
 ; Therapiebeginn (JJJJ/MM/TT), aus dem Fenster "Therapiebeginn" (MetBeginn)
 Global $gMetBeginn = ""
@@ -649,6 +655,15 @@ Func HookAufgabe($vk)
 	EndIf
 	If Not StrgAlt() Then Return ""
 	Local $kalib = Gedrueckt(0x10)
+	; Ue: Medikationsplan als XML (Karteikarte in Medical Office, FreeCommander, Explorer)
+	If $vk = $gUeVk Then
+		If $kalib Then Return ""
+		If MOAktiv() Then Return "BMP:MO"
+		Local $kl = _WinAPI_GetClassName(_WinAPI_GetForegroundWindow())
+		If StringLeft($kl, 13) = "FreeCommander" Then Return "BMP:FC"
+		If $kl = "CabinetWClass" Then Return "BMP:Explorer"
+		Return ""
+	EndIf
 	If $vk = 0x44 And $kalib Then Return "Fensterliste" ; D
 	If BriefAktiv() Then
 		Local $brief = BriefTaste($vk)
@@ -984,6 +999,7 @@ Func AufrufPositionen($hWnd, ByRef $pos)
 	RandSchild($pos, $rechts, $y, "Strg+Alt+T Termine kurz anzeigen")
 	RandSchild($pos, $rechts, $y, "Strg+Alt+M Metforminplan")
 	RandSchild($pos, $rechts, $y, "Strg+Alt+B, M BMI")
+	RandSchild($pos, $rechts, $y, "Strg+Alt+" & ChrW(220) & " Medikationsplan der markierten Zeile nach P:\BMP")
 	$y += 18
 	Local $skripte = ""
 	If Not TextFokus() Then
@@ -1229,6 +1245,7 @@ Func Ausfuehren($aufgabe)
 	EndIf
 	If $aufgabe = "Katalog:Wirkstaerke" Then Return KatalogWirkstaerke()
 	If $aufgabe = "BriefEinfuegen" Then Return BriefEinfuegen()
+	If StringLeft($aufgabe, 4) = "BMP:" Then Return BmpErzeugen(StringTrimLeft($aufgabe, 4))
 	Local $teil = StringSplit($aufgabe, ":", 2)
 	If UBound($teil) = 1 Then Return Reiter($aufgabe)
 	Switch $teil[0]
@@ -9942,6 +9959,277 @@ Func MOStarten()
 		EndIf
 	Next
 	Return Meldung("Medical Office nicht gefunden")
+EndFunc
+
+; virtueller Tastencode des Ue nach dem Tastaturlayout (deutsch VK_OEM_1 = 0xBA)
+Func UeTaste()
+	Local $r = DllCall("user32.dll", "short", "VkKeyScanW", "word", 0xFC)
+	If @error Or $r[0] = -1 Then Return 0xBA
+	Return BitAND($r[0], 0xFF)
+EndFunc
+
+; 22.11.26: Strg+Alt+Ue: Medikationsplan (bundeseinheitlicher Medikationsplan, BMP) aus einem Dokument als XML-Datei nach
+; P:\BMP, benannt wie vom BMP-Scanner, so dass Medical Office die Medikamente von dort uebernehmen kann. Das Lesen macht
+; BmpLesen.exe ([BMP] Programm=, neben MOReiter.exe; C++, s. BmpLesen.cpp): es sucht auf jeder Seite des PDFs bzw. Bildes
+; den Data-Matrix-Code des Plans und entpackt dazu auch die .moc-Dateien aus dem Dateispeicher von Medical Office.
+;   $wo = "MO": Dokument(e) der markierten Zeile der Karteikarte: Datum und Uhrzeit der Zeile per Texterkennung
+;         (KarteiZeilen, das Datum steht nur in der ersten Zeile eines Tages, sonst gilt das letzte darueber im Bild), dazu
+;         die Dateien (PDF, Bilder) der Eintraege des Patienten mit diesem Tag und dieser Minute aus medoff (ltag, datafile);
+;         ist die Uhrzeit nicht lesbar, alle des Tages, ist der Tag nicht lesbar, die des juengsten Tages mit dieser Uhrzeit.
+;         Mehrere Eintraege derselben Minute (z.B. mehrere auf einmal aus der ePA uebernommene Dokumente) gehen alle an
+;         BmpLesen, das nur aus denen mit einem Plan-Code etwas speichert
+;   $wo = "FC": die im FreeCommander markierten Dateien (Alt+Einfg kopiert dort Pfad und Namen in die Zwischenablage)
+;   $wo = "Explorer": die im Windows-Explorer markierten Dateien
+; Gehoert der Plan laut seinen Patientendaten nicht zum Patienten (in Medical Office geoeffnet bzw. Ordner p:\dok\<Pat_id>),
+; wird er trotzdem gespeichert, die Meldung sagt es aber deutlich
+Func BmpErzeugen($wo)
+	If Not ModifierLos() Then Return Meldung("Strg und Alt bitte loslassen")
+	Local $pid = 0, $dateien, $herkunft = ""
+	If $wo = "FC" Or $wo = "Explorer" Then
+		$dateien = ($wo = "FC") ? BmpFCAuswahl() : BmpExplorerAuswahl()
+		If @error Then Return Meldung("Medikationsplan: keine Datei markiert (" & (($wo = "FC") ? "FreeCommander" : "Explorer") & ")")
+		Local $m = StringRegExp($dateien[0], "(?i)\\dok\\(\d{1,9})\\", 1)
+		If Not @error Then $pid = Int($m[0])
+	Else
+		$dateien = BmpKarteiDateien($pid, $herkunft)
+		If @error Then
+			ToolTip("")
+			Return Meldung("Medikationsplan: " & $dateien)
+		EndIf
+	EndIf
+	Return BmpLesenAufrufen($dateien, $pid, $herkunft)
+EndFunc
+
+; Dateien der markierten Karteikarten-Zeile (s. BmpErzeugen); $pid = Pat_id, $herkunft = "vom TT.MM.JJJJ hh:mm" fuer die
+; Meldung; bei Fehler @error und der Grund
+Func BmpKarteiDateien(ByRef $pid, ByRef $herkunft)
+	Local $hWnd = WinGetHandle($MOFenster)
+	If @error Then Return SetError(1, 0, "Medical Office nicht gefunden")
+	Local $hGrid = KarteiListe($hWnd)
+	If Not $hGrid Then Return SetError(1, 0, "keine Karteikarte sichtbar")
+	$pid = MOOffenePatId($hWnd)
+	If $pid = 0 Then
+		Local $nach, $vor, $geb
+		If Not PatientDaten($hWnd, $nach, $vor, $geb) Then Return SetError(1, 0, "Patient nicht gefunden")
+		$pid = MOPatNr($nach, $vor, $geb)
+		If @error Then Return SetError(1, 0, "Patientennummer nicht eindeutig (" & $pid & ")")
+		$pid = Int($pid)
+	EndIf
+	Local $markiert, $ym = KarteiMarkiertY($hGrid, $markiert)
+	If Not $markiert Then Return SetError(1, 0, "keine markierte Zeile in der Karteikarte")
+	HinweisStehend("Medikationsplan: markierte Zeile wird gelesen ...")
+	Local $fehler = OcrBereit()
+	If $fehler <> "" Then Return SetError(1, 0, "Texterkennung nicht gestartet: " & $fehler)
+	Local $z
+	KarteiZeilen($hGrid, $z)
+	Local $ocrFehler = @error
+	OcrSpaeterBeenden()
+	If $ocrFehler Then Return SetError(1, 0, $z)
+	; erkannte Zeile der Markierung: y (Mitte der ersten Textzeile) etwa 8 Pixel unter deren Oberkante
+	Local $i = -1, $best = 99
+	For $k = 0 To UBound($z) - 1
+		Local $dy = $z[$k][3] - $ym
+		If $dy < -3 Or $dy > 24 Then ContinueLoop
+		If Abs($dy - 8) < $best Then
+			$best = Abs($dy - 8)
+			$i = $k
+		EndIf
+	Next
+	If $i < 0 Then Return SetError(1, 0, "markierte Zeile nicht lesbar")
+	Local $tag = KarteiZeilenTag($z, $i), $zeit = $z[$i][1]
+	If $tag = "" And $zeit = "" Then Return SetError(1, 0, "Datum und Uhrzeit der markierten Zeile nicht lesbar")
+	Local $wo = "l.FPatnr=" & Int($pid)
+	If $tag <> "" Then $wo &= " AND l.FDatum=DATEDIFF('" & StringLeft($tag, 4) & "-" & StringMid($tag, 5, 2) & "-" & StringRight($tag, 2) & "','1890-01-01')"
+	If $zeit <> "" Then $wo &= " AND FLOOR(l.FZeit/60)=" & (Int(StringLeft($zeit, 2)) * 60 + Int(StringRight($zeit, 2)))
+	Local $cn = DBVerbinden("medoff")
+	If @error Then Return SetError(1, 0, $cn)
+	$gComFehler = ""
+	Local $rs = $cn.Execute("SELECT d.FSurogat, YEAR(d.FCreationtime), l.FDatum, DATE_FORMAT(DATE('1890-01-01') + INTERVAL l.FDatum DAY, '%d.%m.%Y'), " & _
+			"l.FZeit FROM ltag l JOIN datafile d ON d.FReferenznr=l.FSurogat AND d.FReferenztable=1 WHERE " & $wo & _
+			" AND LOWER(d.FFilename) REGEXP '\\.(pdf|tiff?|png|jpe?g|bmp|gif)(\\.moc)?$' ORDER BY l.FDatum DESC, l.FZeit DESC, d.FSurogat LIMIT 40")
+	If $gComFehler <> "" Or Not IsObj($rs) Then
+		Local $fe = $gComFehler
+		$cn.Close
+		Return SetError(1, 0, "Abfrage fehlgeschlagen: " & $fe)
+	EndIf
+	Local $erg[0], $ersterTag = -1, $fehlt = 0
+	While Not $rs.EOF
+		; ohne lesbaren Tag nur der juengste Tag mit dieser Uhrzeit
+		If $ersterTag < 0 Then
+			$ersterTag = Int($rs.Fields(2).Value)
+			Local $sek = Int($rs.Fields(4).Value)
+			$herkunft = "vom " & String($rs.Fields(3).Value) & (($zeit = "") ? "" : StringFormat(" %02d:%02d", Int($sek / 3600), Mod(Int($sek / 60), 60)))
+		EndIf
+		If Int($rs.Fields(2).Value) <> $ersterTag Then ExitLoop
+		Local $p = BmpMODatei($rs.Fields(0).Value, Int($rs.Fields(1).Value))
+		If $p = "" Then
+			$fehlt += 1
+		Else
+			ReDim $erg[UBound($erg) + 1]
+			$erg[UBound($erg) - 1] = $p
+		EndIf
+		$rs.MoveNext
+	WEnd
+	$rs.Close
+	$cn.Close
+	Local $zeile = (($tag = "") ? "" : StringRight($tag, 2) & "." & StringMid($tag, 5, 2) & "." & StringLeft($tag, 4)) & (($zeit = "") ? "" : " " & $zeit)
+	If $ersterTag < 0 Then Return SetError(1, 0, "zur markierten Zeile (" & StringStripWS($zeile, 3) & ") kein PDF und kein Bild in Medical Office")
+	If UBound($erg) = 0 Then Return SetError(1, 0, $fehlt & " Datei(en) zur markierten Zeile im Dateispeicher von Medical Office nicht gefunden (" & BmpMOWurzel() & ")")
+	Return $erg
+EndFunc
+
+; Dateispeicher von Medical Office ([BMP] MODateien=, sonst \\<Server von Dateilese>\indamed\dat\files)
+Func BmpMOWurzel()
+	Return StringRegExpReplace(Einst("BMP", "MODateien", "\\" & RegWertDL("MOServer", "wser") & "\indamed\dat\files"), "\\$", "")
+EndFunc
+
+; Pfad einer Datei aus medoff.datafile im Dateispeicher (wie mo_dok_lesen.py in Dateilesen):
+; <Wurzel>\<Ablage>\<Jahr>\<b0>\...\<b6>\<Jahr>_<FSurogat als 16-stellige Hexzahl>.<ext>[.moc], Ablage act zuerst, dann
+; die uebrigen (Uebernahme aus Turbomed u.a.); "" wenn nicht gefunden
+Func BmpMODatei($fs, $jahr)
+	Local $wurzel = BmpMOWurzel()
+	If Not IsArray($gBmpAblagen) Or $gBmpAblagenWurzel <> $wurzel Then
+		Local $l[1] = ["act"], $s = FileFindFirstFile($wurzel & "\*")
+		If $s <> -1 Then
+			While 1
+				Local $n = FileFindNextFile($s)
+				If @error Then ExitLoop
+				If @extended And $n <> "act" Then
+					ReDim $l[UBound($l) + 1]
+					$l[UBound($l) - 1] = $n
+				EndIf
+			WEnd
+			FileClose($s)
+		EndIf
+		$gBmpAblagen = $l
+		$gBmpAblagenWurzel = $wurzel
+	EndIf
+	Local $h = Hex(Int($fs, 2), 16), $teile = ""
+	For $k = 1 To 13 Step 2
+		$teile &= "\" & StringMid($h, $k, 2)
+	Next
+	For $a In $gBmpAblagen
+		Local $vz = $wurzel & "\" & $a & "\" & $jahr & $teile
+		Local $f = FileFindFirstFile($vz & "\" & $jahr & "_" & $h & ".*")
+		If $f = -1 Then ContinueLoop
+		Local $name = FileFindNextFile($f)
+		FileClose($f)
+		If $name <> "" Then Return $vz & "\" & $name
+	Next
+	Return ""
+EndFunc
+
+; im FreeCommander markierte Dateien (Alt+Einfg: Pfad und Name in die Zwischenablage, je Zeile eine); die Zwischenablage
+; kommt danach zurueck; @error, wenn keine
+Func BmpFCAuswahl()
+	Local $erg[0], $alt = AblageSichern(), $altOk = Not @error
+	ClipPut("")
+	; Alt+Einfg als eigene Eingabe (am Hook vorbei), Einfg mit KEYEVENTF_EXTENDEDKEY (sonst Ziffernblock-0)
+	DllCall("user32.dll", "none", "keybd_event", "byte", 0xA4, "byte", 0x38, "dword", 0, "ulong_ptr", $Kennung)
+	DllCall("user32.dll", "none", "keybd_event", "byte", 0x2D, "byte", 0x52, "dword", 1, "ulong_ptr", $Kennung)
+	DllCall("user32.dll", "none", "keybd_event", "byte", 0x2D, "byte", 0x52, "dword", 3, "ulong_ptr", $Kennung)
+	DllCall("user32.dll", "none", "keybd_event", "byte", 0xA4, "byte", 0x38, "dword", 2, "ulong_ptr", $Kennung)
+	Local $t = TimerInit(), $s = ""
+	While TimerDiff($t) < 2000
+		Sleep(50)
+		$s = ClipGet()
+		If $s <> "" Then ExitLoop
+	WEnd
+	If $altOk Then AblageZurueck($alt)
+	For $zl In StringSplit(StringStripCR($s), @LF, 2)
+		Local $d = StringStripWS($zl, 3)
+		If $d = "" Or Not FileExists($d) Or StringInStr(FileGetAttrib($d), "D") Then ContinueLoop
+		ReDim $erg[UBound($erg) + 1]
+		$erg[UBound($erg) - 1] = $d
+	Next
+	If UBound($erg) = 0 Then Return SetError(1, 0, $erg)
+	Return $erg
+EndFunc
+
+; im aktiven Explorer-Fenster markierte Dateien (Shell.Application); @error, wenn keine
+Func BmpExplorerAuswahl()
+	Local $erg[0], $h = _WinAPI_GetForegroundWindow()
+	$gComFehler = ""
+	Local $sh = ObjCreate("Shell.Application")
+	If Not IsObj($sh) Then Return SetError(1, 0, $erg)
+	For $w In $sh.Windows()
+		If Int($w.HWND) <> Int($h) Then ContinueLoop
+		For $it In $w.Document.SelectedItems()
+			Local $d = $it.Path
+			If $d = "" Or Not FileExists($d) Or StringInStr(FileGetAttrib($d), "D") Then ContinueLoop
+			ReDim $erg[UBound($erg) + 1]
+			$erg[UBound($erg) - 1] = $d
+		Next
+		; Windows 11: mehrere Reiter teilen sich ein Fenster, der erste mit Auswahl gilt
+		If UBound($erg) Then ExitLoop
+	Next
+	If UBound($erg) = 0 Then Return SetError(1, 0, $erg)
+	Return $erg
+EndFunc
+
+; BmpLesen.exe mit den Dateien aufrufen (s. BmpErzeugen) und das Ergebnis melden
+Func BmpLesenAufrufen($dateien, $pid, $herkunft)
+	Local $exe = Einst("BMP", "Programm", "")
+	If $exe = "" Then $exe = @ScriptDir & "\BmpLesen.exe"
+	If Not FileExists($exe) Then Return Meldung("Medikationsplan: " & $exe & " fehlt")
+	Local $befehl = '"' & $exe & '"', $ziel = Einst("BMP", "Ordner", "")
+	If $ziel <> "" Then $befehl &= ' -o "' & StringRegExpReplace($ziel, "\\$", "") & '"'
+	Local $nach = "", $vor = "", $geb = ""
+	If $pid And MOPatDatenNr($pid, $nach, $vor, $geb) Then $befehl &= ' -p "' & $nach & ";" & $vor & ";" & $geb & '"'
+	For $d In $dateien
+		$befehl &= ' "' & $d & '"'
+	Next
+	HinweisStehend("Medikationsplan wird gelesen (" & UBound($dateien) & " Datei" & ((UBound($dateien) = 1) ? "" : "en") & ") ...")
+	; 2 = $STDOUT_CHILD
+	Local $pr = Run($befehl, @TempDir, @SW_HIDE, 2)
+	If Not $pr Then Return Meldung("Medikationsplan: " & $exe & " nicht startbar")
+	Local $bin = Binary(""), $t = TimerInit(), $max = Int(Einst("BMP", "Warten", "120")) * 1000
+	While TimerDiff($t) < $max
+		$bin &= StdoutRead($pr, False, True)
+		If @error Then ExitLoop
+		Sleep(50)
+	WEnd
+	If ProcessExists($pr) Then
+		ProcessClose($pr)
+		Return Meldung("Medikationsplan: BmpLesen.exe nach " & Round($max / 1000) & " s abgebrochen")
+	EndIf
+	Local $n = 0, $anders = "", $ordner = "", $kein = 0, $seiten = "", $fehler = "", $blaetter = "", $quellen = "", $nQuellen = 0
+	For $zl In StringSplit(StringStripCR(BinaryToString($bin, 4)), @LF, 2)
+		Local $f = StringSplit($zl, @TAB, 2)
+		Switch $f[0]
+			Case "XML"
+				If UBound($f) < 8 Then ContinueLoop
+				$n += 1
+				$ordner = StringLeft($f[1], StringInStr($f[1], "\", 0, -1) - 1)
+				If $f[5] <> "" Then $blaetter &= (($blaetter = "") ? "" : ", ") & $f[5] & "/" & $f[6]
+				If Not StringInStr(@LF & $quellen, @LF & $f[7] & @LF) Then
+					$quellen &= $f[7] & @LF
+					$nQuellen += 1
+				EndIf
+				If UBound($f) > 8 And $f[8] = "anderer Patient" Then $anders = $f[3] & " " & $f[2] & " (" & $f[4] & ")"
+			Case "KEIN"
+				$kein += 1
+				If UBound($f) > 2 Then $seiten = $f[2]
+			Case "FEHLER"
+				If UBound($f) > 2 Then $fehler &= @CRLF & $f[2] & ": " & $f[1]
+		EndSwitch
+	Next
+	If $n = 0 Then
+		If $fehler <> "" Then Return Meldung("Medikationsplan: Fehler beim Lesen" & $fehler)
+		If UBound($dateien) = 1 And $seiten <> "" Then Return Meldung("Medikationsplan: " & $seiten & " des Dokuments " & $herkunft)
+		Return Meldung("Medikationsplan: kein Medikationsplan-Code in " & (($kein = 1) ? "dem Dokument" : "den " & $kein & " Dokumenten") & " " & $herkunft)
+	EndIf
+	Local $txt = (($n = 1) ? "Medikationsplan" : $n & " Bl" & ChrW(228) & "tter des Medikationsplans") & " " & $herkunft & _
+			(($blaetter <> "" And $n > 1) ? " (Blatt " & $blaetter & ")" : "") & " gespeichert in " & $ordner & @CRLF & _
+			"jetzt in Medical Office " & ChrW(252) & "bernehmen"
+	; z.B. mehrere auf einmal aus der ePA uebernommene Dokumente derselben Minute, in mehr als einem ein Plan
+	If $nQuellen > 1 Then $txt = "ACHTUNG: Pl" & ChrW(228) & "ne aus " & $nQuellen & " verschiedenen Dokumenten " & $herkunft & _
+			" gespeichert, bitte nur den richtigen " & ChrW(252) & "bernehmen" & @CRLF & $txt
+	If $anders <> "" Then $txt = "ACHTUNG: der Plan geh" & ChrW(246) & "rt zu " & $anders & ", nicht zum ge" & ChrW(246) & "ffneten Patienten!" & @CRLF & $txt
+	If $fehler <> "" Then $txt &= @CRLF & "Fehler:" & $fehler
+	$gMeldung = $txt
+	Hinweis($txt, ($anders <> "" Or $nQuellen > 1) ? 20000 : 8000)
+	Return True
 EndFunc
 
 Func Meldung($txt)

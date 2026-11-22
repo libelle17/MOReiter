@@ -28,6 +28,7 @@ if not exist MOReiter.exe (echo MOReiter.exe fehlt, bitte zuerst Kompilieren.bat
 echo Kopiere MOReiter nach %APPDATA%\MOReiter und starte es dort ...
 if not exist "%APPDATA%\MOReiter" md "%APPDATA%\MOReiter"
 xcopy /d /y /q MOReiter.exe "%APPDATA%\MOReiter\" >nul
+if exist BmpLesen.exe xcopy /d /y /q BmpLesen.exe "%APPDATA%\MOReiter\" >nul
 if exist MOReiter-Vorgaben.ini xcopy /d /y /q MOReiter-Vorgaben.ini "%APPDATA%\MOReiter\" >nul
 if exist MOReiter-Praxis.ini xcopy /d /y /q MOReiter-Praxis.ini "%APPDATA%\MOReiter\" >nul
 rem Autostart: Verknuepfung im Autostart-Ordner des Benutzers (nicht mit [Allgemein] Autostart=0 in MOReiter-Praxis.ini,

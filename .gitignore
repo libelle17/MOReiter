@@ -16,3 +16,6 @@ AutoIt3/
 
 # eigene Notizen
 Tastenwahl-Strg-oder-StrgAlt.txt
+
+# Medikationsplan-Leser (entsteht mit BmpLesen-Kompilieren.bat, statisch gebunden, ca. 45 MB)
+BmpLesen.exe
