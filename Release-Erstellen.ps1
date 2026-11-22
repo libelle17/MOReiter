@@ -49,6 +49,9 @@ Fertige ausführbare Dateien zum Entpacken, ohne Kompilieren: alle Dateien des R
 
 Weiteres im README, Abschnitt "Einrichten". Stand des Quelltexts: $commit. Lizenzen der in BmpLesen.exe enthaltenen Bibliotheken: Drittanbieter-Lizenzen.txt im Paket.
 "@
-& gh release create $tag $zip --title "Fertige ausführbare Dateien – Stand $datum" --notes $text --target main
+# Text ueber eine Datei: Windows PowerShell 5.1 gibt Anfuehrungszeichen in Argumenten falsch an gh weiter
+$notizen = Join-Path $PSScriptRoot "Release\Notizen.md"
+[IO.File]::WriteAllText($notizen, $text, (New-Object Text.UTF8Encoding $false))
+& gh release create $tag $zip --title "Fertige ausführbare Dateien – Stand $datum" --notes-file $notizen --target main
 if ($LASTEXITCODE) { throw "gh release create fehlgeschlagen" }
 Write-Host "Release $tag angelegt."
