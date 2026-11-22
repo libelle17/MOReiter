@@ -8,7 +8,7 @@ von „geht überall“ bis „braucht eine Schattendatenbank“.
 MOReiter ist kein Produkt der Indamed EDV-Entwicklung und Vertrieb GmbH und wird von ihr nicht
 unterstützt. Benutzung auf eigene Verantwortung, ohne Gewährleistung (s. [LICENSE](LICENSE), GPL-3.0).
 
-## 1. Standardinstallation
+## 1. Medical Office-Standardinstallation
 
 Medical Office, wie es üblicherweise eingerichtet ist (die Dokumente liegen verschlüsselt in .moc-Dateien).
 
@@ -32,8 +32,8 @@ Bedienung, ganz ohne Datenbankzugriff:
   Dateien), liest den Data-Matrix-Code des bundeseinheitlichen Medikationsplans und legt das XML wie ein
   Medikationsplan-Scanner im BMP-Ordner ab (`[BMP] Ordner=`, Vorgabe `P:\BMP`; ist er nicht erreichbar, der Ordner
   `BMP` unter „Dokumente“ des Benutzers). Von dort übernimmt Medical Office die Medikamente im Dosierplan mit Strg+L,
-  wenn in der Datenpflege „Barcodescanner: Dateiauswahl“ mit diesem Ordner eingestellt ist (s. unten
-  `BMP-Einstellung-MO.ps1`). Gelesen wird mit `BmpLesen.exe` (s. Voraussetzungen),
+  wenn das an jedem Arbeitsplatz eingestellt ist (s. Einstellungen, „Für die Eintragung der
+  Fremdmedikamentenpläne“). Gelesen wird mit `BmpLesen.exe` (s. Voraussetzungen),
 - Briefversand, ePA-Hochladen, zuletzt geöffnete Patienten, Hauptmenü …,
 - Strg+Alt zeigt farbig, welche Tasten in der aktuellen Ansicht was bewirken,
 - Strg+Alt+F1 zeigt die Hilfe mit allen Tasten, die auf diesem PC eingerichtet sind,
@@ -44,15 +44,9 @@ s. `[Allgemein] Zugang=` in `MOReiter-Vorgaben.ini`):
 
 - Karteikarte: Strg+Umsch+F springt zum vorigen (bzw. von oben aus zum nächsten) Eintrag eines abgefragten Typs
   (auch nur dessen Anfang oder ein Teil davon), mit Blick in die Datenbank, ob es überhaupt einen gibt,
-- BMI: Strg+Alt+B, dann M zeigt den BMI nach dem jüngsten Gewicht mit Größe, Gewicht und deren Datum,
+- BMI-Anzeige aus der Karteikarte: Strg+Alt+B, dann M zeigt den BMI nach dem jüngsten Gewicht mit Größe, Gewicht
+  und deren Datum,
 - Accu-Chek Smart Pix: Patient wählen bzw. Patientenliste mit Medical Office abgleichen.
-
-Mit Schreibzugriff auf die Datenbank:
-
-- `BMP-Einstellung-MO.ps1` trägt für alle Arbeitsplätze „Barcodescanner: Dateiauswahl“ mit dem BMP-Ordner ein
-  (`medoff.med95ini`, mit Änderungsprotokoll in `dbsprot` wie bei einer Eingabe in Medical Office; wiederholbar für
-  neue PCs, ohne `-Ausfuehren` nur Probelauf). Der BMP-Ordner muss dann auf allen PCs unter demselben Pfad
-  erreichbar sein, am besten als gemeinsamer Netzordner.
 
 ## 2. Unverschlüsselter Dateispeicher
 
@@ -77,9 +71,9 @@ nach dessen Patientennummer (`[Dokumente] Dok=`, Vorgabe `p:\dok`, also z.B. `p:
 - Strg+Alt+Ü im FreeCommander oder Explorer erkennt am Ordner, zu welchem Patienten eine Datei gehört, und warnt,
   wenn der Medikationsplan auf einen anderen Namen lautet.
 
-## 4. Labor über onlinebefunde
+## 4. Labor über Online-Portal
 
-Für Praxen, deren Labor die Befunde auf onlinebefunde.labor-staber.de bereitstellt:
+Für Praxen, deren Labor die Befunde etwa auf onlinebefunde.labor-staber.de bereitstellt:
 
 - Strg+O ruft die Laborbefunde des Patienten im Firefox ab, legt die PDFs ab (`[Labor] Ablage=`) und ordnet sie auf
   Wunsch weiter ein (s. Stufe 3).
@@ -100,7 +94,7 @@ Für Praxen, die die Daten von Medical Office laufend mit Dateilese in eine eige
 - Arztbrief übernehmen: b, e schnell nacheinander in der Karteikarte kopiert den ganzen Text des jüngsten offenen
   Arztbriefs (Word oder LibreOffice, von Dateilese angelegt) des Patienten in einen neuen Brief aus der Vorlage
   eArztbrief (q, e, a) und speichert mit F2,
-- BMI (Strg+Alt+B, M) nimmt Gewicht und Größe zuerst aus quelle, auch aus alten Anamnesebögen,
+- BMI-Anzeige aus der Karteikarte (Strg+Alt+B, M) nimmt Gewicht und Größe zuerst aus quelle, auch aus alten Anamnesebögen,
 - Laborbefunde und andere abgelegte PDFs werden auf Wunsch auch in quelle eingetragen (`[Dokumente] Datenbank=1`),
 - Smart Pix-Abgleich auch gegen die Patienten in quelle.
 
@@ -113,7 +107,7 @@ Für Praxen, die die Daten von Medical Office laufend mit Dateilese in eine eige
   beim ersten Abruf selbst zur Installation an
 - für den Berichtszeitraum in den Dateinamen der Zuckerberichte: `pdftotext.exe` aus den kostenlosen Xpdf-Werkzeugen
   (www.xpdfreader.com); fehlt es, lädt MOReiter es beim Einrichten auf Wunsch selbst herunter
-- für Strg+Z, Strg+Umsch+F, Strg+Alt+D, BMI, Strg+Alt+Ü in der Karteikarte und den Smart Pix-Abgleich: Lesezugriff
+- für Strg+Z, Strg+Umsch+F, Strg+Alt+D, BMI-Anzeige, Strg+Alt+Ü in der Karteikarte und den Smart Pix-Abgleich: Lesezugriff
   auf die Datenbank von Medical Office (MySQL ODBC 8.0 Unicode Driver und Zugangsdaten, s. `[Allgemein] Zugang=` in
   `MOReiter-Vorgaben.ini`)
 - für Smart Pix: das Accu-Chek Smart Pix-Lesegerät; für das Scannen gedruckter Medikationspläne (unabhängig von
@@ -186,6 +180,21 @@ MOReiter liest drei Dateien gleichen Aufbaus, die erste, die einen Wert nennt, g
 Bei einem Update werden nur `MOReiter.au3`, die Vorgaben und die übrigen Repo-Dateien ersetzt; die
 eigenen Einstellungen bleiben erhalten. Fehlt `MOReiter-Vorgaben.ini`, legt MOReiter die in die exe
 eingebettete Fassung wieder an.
+
+### Für die Eintragung der Fremdmedikamentenpläne
+
+Damit Medical Office die Medikationspläne aus dem BMP-Ordner (Strg+Alt+Ü bzw. 2D-Scanner) im Dosierplan mit Strg+L
+übernimmt, muss an jedem Arbeitsplatz in der Datenpflege von Medical Office (Einstellungen zum Dosierplan)
+
+- beim Barcodescanner „Dateiauswahl“ angekreuzt und
+- als Dateipfad der BMP-Ordner eingetragen sein (derselbe wie `[BMP] Ordner=`, z.B. `P:\BMP\`).
+
+Medical Office speichert das je PC. Der BMP-Ordner muss deshalb auf allen PCs unter demselben Pfad erreichbar sein,
+am besten als gemeinsamer Netzordner. Zur Vereinfachung kann ggf. das Skript `BMP-Einstellung-MO.ps1` verwendet
+werden: Es trägt beides für alle Arbeitsplätze auf einmal in die Datenbank von Medical Office ein (Schreibzugriff
+nötig; `medoff.med95ini` mit Änderungsprotokoll in `dbsprot` wie bei einer Eingabe in Medical Office). Ohne
+`-Ausfuehren` zeigt es nur, was es ändern würde; für neue PCs lässt es sich wiederholen. Den Ordner liest es aus
+denselben INI-Dateien wie MOReiter.
 
 ## Wenn ein Klick danebengeht
 

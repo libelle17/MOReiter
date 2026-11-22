@@ -998,7 +998,7 @@ Func AufrufPositionen($hWnd, ByRef $pos)
 	Local $rechts = $f[0] + $f[2] - 18, $unten = $f[1] + $f[3] - 18
 	RandSchild($pos, $rechts, $y, "Strg+Alt+T Termine kurz anzeigen")
 	RandSchild($pos, $rechts, $y, "Strg+Alt+M Metforminplan")
-	RandSchild($pos, $rechts, $y, "Strg+Alt+B, M BMI")
+	RandSchild($pos, $rechts, $y, "Strg+Alt+B, M BMI-Anzeige")
 	RandSchild($pos, $rechts, $y, "Strg+Alt+" & ChrW(220) & " Medikationsplan der markierten Zeile nach P:\BMP")
 	$y += 18
 	Local $skripte = ""
@@ -1231,7 +1231,7 @@ Func Ausfuehren($aufgabe)
 	EndIf
 	If $aufgabe = "BWahl" Then
 		$gBAnzeige = True
-		HinweisStehend("Strg+Alt+B: M = BMI, Esc = abbrechen")
+		HinweisStehend("Strg+Alt+B: M = BMI-Anzeige, Esc = abbrechen")
 		Return True
 	EndIf
 	If $aufgabe = "BWahl:Abbruch" Then
