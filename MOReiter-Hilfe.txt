@@ -89,7 +89,8 @@ b, e               schnell nacheinander (innerhalb 0,6 s) in der Liste der Karte
                     sonst kommt deren alter Inhalt zurück. Ein b ohne folgendes e kommt mit kurzer
                     Verzögerung wie getippt an; in Eingabefeldern gilt b, e nicht
 Strg+Alt+Ü          Medikationsplan (bundeseinheitlicher Medikationsplan) als XML-Datei nach P:\BMP, wie vom
-                    BMP-Scanner, um die Medikamente dann in Medical Office zu übernehmen: in der Karteikarte aus
+                    BMP-Scanner, um die Medikamente dann in Medical Office im Dosierplan mit Strg+L zu übernehmen
+                    (Barcodescanner „Dateiauswahl“, s. BMP-Einstellung-MO.ps1): in der Karteikarte aus
                     dem Dokument der markierten Zeile (z.B. aus der ePA übernommen, Datum und Uhrzeit der Zeile
                     per Texterkennung, die Dateien aus Medical Office), im FreeCommander und im Explorer aus den
                     markierten Dateien (z.B. p:\dok\<Pat_id>\...fremdmedi...pdf). Gelesen wird der

@@ -10036,29 +10036,87 @@ Func BmpKarteiDateien(ByRef $pid, ByRef $herkunft)
 		EndIf
 	Next
 	If $i < 0 Then Return SetError(1, 0, "markierte Zeile nicht lesbar")
-	Local $tag = KarteiZeilenTag($z, $i), $zeit = $z[$i][1]
+	; Tag der Zeile: ihr eigenes Datum, sonst das der naechsten Datumszeile darueber (das Datum steht nur in der ersten Zeile
+	; eines Tages); dazu das naechste darunter und die Richtung der Liste (1 = neueste unten, -1 = neueste oben, 0 = unbekannt)
+	Local $tag = KarteiZeilenTag($z, $i), $zeit = $z[$i][1], $unten = "", $richtung = 0, $vorig = ""
+	For $k = $i + 1 To UBound($z) - 1
+		If $z[$k][0] <> "" Then
+			$unten = $z[$k][0]
+			ExitLoop
+		EndIf
+	Next
+	For $k = 0 To UBound($z) - 1
+		If $z[$k][0] = "" Then ContinueLoop
+		If $vorig <> "" And $z[$k][0] <> $vorig Then
+			$richtung = (Number($z[$k][0]) > Number($vorig)) ? 1 : -1
+			ExitLoop
+		EndIf
+		$vorig = $z[$k][0]
+	Next
+	BmpLog("Karteikarte: markiert y=" & $ym & ", Zeile " & $i & ", eigenes Datum " & ($z[$i][0] <> "") & ", Tag " & $tag & _
+			", Zeit " & $zeit & ", darunter " & $unten & ", Richtung " & $richtung & "; gelesen: " & KarteiZeilenText($z))
 	If $tag = "" And $zeit = "" Then Return SetError(1, 0, "Datum und Uhrzeit der markierten Zeile nicht lesbar")
-	Local $wo = "l.FPatnr=" & Int($pid)
-	If $tag <> "" Then $wo &= " AND l.FDatum=DATEDIFF('" & StringLeft($tag, 4) & "-" & StringMid($tag, 5, 2) & "-" & StringRight($tag, 2) & "','1890-01-01')"
-	If $zeit <> "" Then $wo &= " AND FLOOR(l.FZeit/60)=" & (Int(StringLeft($zeit, 2)) * 60 + Int(StringRight($zeit, 2)))
 	Local $cn = DBVerbinden("medoff")
 	If @error Then Return SetError(1, 0, $cn)
+	Local $basis = "l.FPatnr=" & Int($pid), $minute = ""
+	If $zeit <> "" Then $minute = " AND FLOOR(l.FZeit/60)=" & (Int(StringLeft($zeit, 2)) * 60 + Int(StringRight($zeit, 2)))
+	; 1. Tag und Minute (bzw. nur eins davon); 2. findet das nichts und ist die Uhrzeit bekannt: nur die Minute, zwischen den
+	; Datumszeilen darueber und darunter (z.B. das eigene Datum der markierten Zeile auf dem Markierungsblau nicht gelesen,
+	; dann gilt sonst der Tag darueber), der naechste Tag in Leserichtung; ohne bekannte Richtung der juengste
+	Local $erg, $fehlt = 0, $ersterTag = -1
+	$erg = BmpKarteiAbfrage($cn, $basis & (($tag = "") ? "" : " AND l.FDatum=" & BmpTagNr($tag)) & $minute, "DESC", $zeit <> "", $herkunft, $fehlt, $ersterTag)
+	If @error Then Return SetError(1, 0, $erg)
+	; 2. eigenes Datum der Zeile, aber nichts gefunden: die Jahreszahl ist unsicher (die Texterkennung las z.B. "2026" als
+	; "202" -> 2020), also Tag und Monat in jedem Jahr, bei mehreren das zur gelesenen Jahreszahl naechste
+	If $ersterTag < 0 And $zeit <> "" And $z[$i][0] <> "" Then
+		Local $tm = " AND DATE_FORMAT(DATE('1890-01-01') + INTERVAL l.FDatum DAY, '%m%d')='" & StringRight($tag, 4) & "'"
+		Local $jahrNah = "ABS(YEAR(DATE('1890-01-01') + INTERVAL l.FDatum DAY)-" & Int(StringLeft($tag, 4)) & ")"
+		BmpLog("nichts am " & $tag & ", weiter mit Tag/Monat in jedem Jahr:" & $tm & $minute)
+		$erg = BmpKarteiAbfrage($cn, $basis & $tm & $minute, "DESC", True, $herkunft, $fehlt, $ersterTag, $jahrNah)
+		If @error Then Return SetError(1, 0, $erg)
+	EndIf
+	If $ersterTag < 0 And $zeit <> "" And $tag <> "" Then
+		Local $bereich = "", $ord = "DESC"
+		If $richtung = 1 Then
+			$bereich = " AND l.FDatum>" & BmpTagNr($tag) & (($unten = "") ? "" : " AND l.FDatum<" & BmpTagNr($unten))
+			$ord = "ASC"
+		ElseIf $richtung = -1 Then
+			$bereich = " AND l.FDatum<" & BmpTagNr($tag) & (($unten = "") ? "" : " AND l.FDatum>" & BmpTagNr($unten))
+		EndIf
+		BmpLog("nichts am " & $tag & ", weiter mit:" & $bereich & $minute & " " & $ord)
+		$erg = BmpKarteiAbfrage($cn, $basis & $bereich & $minute, $ord, True, $herkunft, $fehlt, $ersterTag)
+		If @error Then Return SetError(1, 0, $erg)
+	EndIf
+	$cn.Close
+	Local $zeile = (($tag = "") ? "" : StringRight($tag, 2) & "." & StringMid($tag, 5, 2) & "." & StringLeft($tag, 4)) & (($zeit = "") ? "" : " " & $zeit)
+	BmpLog("Ergebnis: " & UBound($erg) & " Datei(en) " & $herkunft & ", " & $fehlt & " fehlen")
+	If $ersterTag < 0 Then Return SetError(1, 0, "zur markierten Zeile (gelesen: " & StringStripWS($zeile, 3) & ") kein PDF und kein Bild in Medical Office")
+	If UBound($erg) = 0 Then Return SetError(1, 0, $fehlt & " Datei(en) zur markierten Zeile im Dateispeicher von Medical Office nicht gefunden (" & BmpMOWurzel() & ")")
+	Return $erg
+EndFunc
+
+; PDFs und Bilder der ltag-Eintraege mit der Bedingung $wo, nur die des ersten Tages in der Reihenfolge $ord (ASC/DESC);
+; $herkunft = "vom TT.MM.JJJJ[ hh:mm]", $fehlt = nicht im Dateispeicher gefunden, $ersterTag = FDatum (-1 = keiner);
+; bei Fehler @error und der Grund
+Func BmpKarteiAbfrage($cn, $wo, $ord, $mitZeit, ByRef $herkunft, ByRef $fehlt, ByRef $ersterTag, $zuerst = "")
+	Local $erg[0]
+	$ersterTag = -1
+	$fehlt = 0
 	$gComFehler = ""
+	; [.] statt \. : medoff laeuft mit NO_BACKSLASH_ESCAPES
 	Local $rs = $cn.Execute("SELECT d.FSurogat, YEAR(d.FCreationtime), l.FDatum, DATE_FORMAT(DATE('1890-01-01') + INTERVAL l.FDatum DAY, '%d.%m.%Y'), " & _
 			"l.FZeit FROM ltag l JOIN datafile d ON d.FReferenznr=l.FSurogat AND d.FReferenztable=1 WHERE " & $wo & _
-			" AND LOWER(d.FFilename) REGEXP '\\.(pdf|tiff?|png|jpe?g|bmp|gif)(\\.moc)?$' ORDER BY l.FDatum DESC, l.FZeit DESC, d.FSurogat LIMIT 40")
+			" AND LOWER(d.FFilename) REGEXP '[.](pdf|tiff?|png|jpe?g|bmp|gif)([.]moc)?$' ORDER BY " & (($zuerst = "") ? "" : $zuerst & ", ") & "l.FDatum " & $ord & ", l.FZeit DESC, d.FSurogat LIMIT 40")
 	If $gComFehler <> "" Or Not IsObj($rs) Then
 		Local $fe = $gComFehler
 		$cn.Close
 		Return SetError(1, 0, "Abfrage fehlgeschlagen: " & $fe)
 	EndIf
-	Local $erg[0], $ersterTag = -1, $fehlt = 0
 	While Not $rs.EOF
-		; ohne lesbaren Tag nur der juengste Tag mit dieser Uhrzeit
 		If $ersterTag < 0 Then
 			$ersterTag = Int($rs.Fields(2).Value)
 			Local $sek = Int($rs.Fields(4).Value)
-			$herkunft = "vom " & String($rs.Fields(3).Value) & (($zeit = "") ? "" : StringFormat(" %02d:%02d", Int($sek / 3600), Mod(Int($sek / 60), 60)))
+			$herkunft = "vom " & String($rs.Fields(3).Value) & ($mitZeit ? StringFormat(" %02d:%02d", Int($sek / 3600), Mod(Int($sek / 60), 60)) : "")
 		EndIf
 		If Int($rs.Fields(2).Value) <> $ersterTag Then ExitLoop
 		Local $p = BmpMODatei($rs.Fields(0).Value, Int($rs.Fields(1).Value))
@@ -10071,11 +10129,20 @@ Func BmpKarteiDateien(ByRef $pid, ByRef $herkunft)
 		$rs.MoveNext
 	WEnd
 	$rs.Close
-	$cn.Close
-	Local $zeile = (($tag = "") ? "" : StringRight($tag, 2) & "." & StringMid($tag, 5, 2) & "." & StringLeft($tag, 4)) & (($zeit = "") ? "" : " " & $zeit)
-	If $ersterTag < 0 Then Return SetError(1, 0, "zur markierten Zeile (" & StringStripWS($zeile, 3) & ") kein PDF und kein Bild in Medical Office")
-	If UBound($erg) = 0 Then Return SetError(1, 0, $fehlt & " Datei(en) zur markierten Zeile im Dateispeicher von Medical Office nicht gefunden (" & BmpMOWurzel() & ")")
 	Return $erg
+EndFunc
+
+; JJJJMMTT -> ltag.FDatum (Tage seit 1.1.1890)
+Func BmpTagNr($t)
+	Return Int(_DateDiff("D", "1890/01/01", StringLeft($t, 4) & "/" & StringMid($t, 5, 2) & "/" & StringRight($t, 2)))
+EndFunc
+
+; Protokoll von Strg+Alt+Ue nach %APPDATA%\MOReiter\Bmp.log (nur Datum, Uhrzeit, Typ, Nummern, keine Namen); waechst
+; ueber 200 KB, beginnt es neu
+Func BmpLog($txt)
+	Local $datei = @AppDataDir & "\MOReiter\Bmp.log"
+	If FileGetSize($datei) > 200000 Then FileDelete($datei)
+	FileWriteLine($datei, @YEAR & "-" & @MON & "-" & @MDAY & " " & @HOUR & ":" & @MIN & ":" & @SEC & "  " & $txt)
 EndFunc
 
 ; Dateispeicher von Medical Office ([BMP] MODateien=, sonst \\<Server von Dateilese>\indamed\dat\files)
@@ -10214,6 +10281,8 @@ Func BmpLesenAufrufen($dateien, $pid, $herkunft)
 				If UBound($f) > 2 Then $fehler &= @CRLF & $f[2] & ": " & $f[1]
 		EndSwitch
 	Next
+	BmpLog("BmpLesen: " & UBound($dateien) & " Datei(en), " & $n & " Blatt/Blaetter aus " & $nQuellen & " Dokument(en), " & $kein & _
+			" ohne Plan, Fehler: " & (($fehler = "") ? "keine" : "ja") & ", anderer Patient: " & (($anders = "") ? "nein" : "ja"))
 	If $n = 0 Then
 		If $fehler <> "" Then Return Meldung("Medikationsplan: Fehler beim Lesen" & $fehler)
 		If UBound($dateien) = 1 And $seiten <> "" Then Return Meldung("Medikationsplan: " & $seiten & " des Dokuments " & $herkunft)
@@ -10221,7 +10290,7 @@ Func BmpLesenAufrufen($dateien, $pid, $herkunft)
 	EndIf
 	Local $txt = (($n = 1) ? "Medikationsplan" : $n & " Bl" & ChrW(228) & "tter des Medikationsplans") & " " & $herkunft & _
 			(($blaetter <> "" And $n > 1) ? " (Blatt " & $blaetter & ")" : "") & " gespeichert in " & $ordner & @CRLF & _
-			"jetzt in Medical Office " & ChrW(252) & "bernehmen"
+			"jetzt in Medical Office im Dosierplan mit Strg+L " & ChrW(252) & "bernehmen"
 	; z.B. mehrere auf einmal aus der ePA uebernommene Dokumente derselben Minute, in mehr als einem ein Plan
 	If $nQuellen > 1 Then $txt = "ACHTUNG: Pl" & ChrW(228) & "ne aus " & $nQuellen & " verschiedenen Dokumenten " & $herkunft & _
 			" gespeichert, bitte nur den richtigen " & ChrW(252) & "bernehmen" & @CRLF & $txt
