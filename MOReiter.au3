@@ -402,8 +402,10 @@ ElseIf $CmdLine[0] > 0 And StringLeft($CmdLine[1], 9) = "moreiter:" Then
 ElseIf $CmdLine[0] > 0 Then
 	Exit Ausfuehren($CmdLine[1]) ? 0 : 1
 ElseIf _Singleton("MOReiter_resident", 1) = 0 Then ; laeuft schon
-	; sonst merkt man nicht, dass noch eine alte Version mit alten Hotkeys aktiv ist
-;	MsgBox(64, "MOReiter", "MOReiter laeuft bereits." & @CRLF & "Fuer eine neue Version die alte zuerst ueber das Tray-Menue beenden.", 10)
+	; z.B. aus dem Startmenue nochmals aufgerufen: kurz sagen, warum nichts weiter passiert (kein MsgBox, das stuende
+	; beim Anmelden womoeglich unbeachtet herum)
+	ToolTip("MOReiter laeuft schon (Symbol im Infobereich der Taskleiste; Hilfe: Strg+Alt+F1, Neustart: Strg+Alt+Esc)", Default, Default, "MOReiter")
+	Sleep(3000)
 	Exit
 EndIf
 

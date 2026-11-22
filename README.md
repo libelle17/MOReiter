@@ -166,7 +166,7 @@ Es gibt zwei Wege; für die meisten Praxen ist A der einfachere. Eine Anmeldung 
    Taskleiste (ggf. unter dem kleinen Pfeil). Für den Start beim Anmelden legt `Einrichten.bat` eine Verknüpfung
    im Autostart-Ordner des Benutzers an (abzuschalten im Fenster „MOReiter einrichten“), außerdem eine im
    Startmenü, so dass MOReiter nach der Windows-Taste beim Tippen von „MOR…“ zur Auswahl erscheint. Es läuft immer nur
-   einmal gleichzeitig; ein Doppelaufruf beendet sich still.
+   einmal gleichzeitig; ein Doppelaufruf zeigt 3 s lang „MOReiter läuft schon“ und beendet sich.
    **Virenschutz:** Weil MOReiter die Tastatur auf seine Kürzel hin beobachtet, halten manche Virenscanner es
    für verdächtig und entfernen `MOReiter.exe` stillschweigend (dann läuft es nach `Einrichten.bat` nicht, und
    Strg+Alt+F1 tut nichts). Dann die Datei aus der Quarantäne zurückholen und für die Ordner von MOReiter
