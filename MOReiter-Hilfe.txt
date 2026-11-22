@@ -418,7 +418,9 @@ gilt der eingebaute Wert. Alle drei haben denselben Aufbau; Kalibrieren schreibt
               X, Y, Abstand      links: Lage des ersten Filters und Zeilenabstand (schreibt das Kalibrieren)
 [Karteikarte] Art=Klick          Strg+Alt+U klickt in die markierte Zeile statt nur den Fokus zu setzen
               ZeitAb=54, TypAb=98, TypBis=144   Strg+Umsch+G/F: Beginn der Spalten Zeit und Typ, Ende
-                                 der Spalte Typ, in Pixeln vom linken Rand der Liste
+                                 der Spalte Typ, in Pixeln vom linken Rand der Liste (Zeit- und
+                                 Typ-Anfang ungefähr: die Texterkennung trennt die Spalten in der
+                                 nächsten Lücke innerhalb von 12 Pixeln)
               TypSeiten=300      Strg+Umsch+F ohne Datenbank: höchstens so viele Seiten
 [Termine]     Warten=200         ms zwischen F6 und Alt+T
 [Labor]       Url=...            Adresse der Patientensuche; ohne sie ist der Laborabruf abgeschaltet

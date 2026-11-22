@@ -8096,7 +8096,8 @@ Func KarteiZeilen($hGrid, ByRef $z)
 			$erg[$r][3] = $y
 		EndIf
 		If $x < $bd Then
-			Local $m = StringRegExp($txt, "^\D?(\d{1,2})[.,](\d{1,2})[.,](\d{4}|\d{2})", 1)
+			; (?!\d): aus einer abgeschnittenen Jahreszahl ("29.10.202") wurde sonst "20" = 2020; dann lieber kein Datum
+			Local $m = StringRegExp($txt, "^\D?(\d{1,2})[.,](\d{1,2})[.,](\d{4}|\d{2})(?!\d)", 1)
 			If @error Then ContinueLoop
 			Local $t = Int($m[0]), $mo = Int($m[1]), $j = Int($m[2])
 			If $t < 1 Or $t > 31 Or $mo < 1 Or $mo > 12 Then ContinueLoop
@@ -8591,7 +8592,7 @@ Func OcrStarten()
 			'[Console]::InputEncoding = [Text.Encoding]::UTF8' & @CRLF & _
 			'Add-Type -AssemblyName System.Drawing' & @CRLF & _
 			'Add-Type -AssemblyName System.Runtime.WindowsRuntime' & @CRLF & _
-			'$aufb = ($mitAufb -eq ''1''); $dll = Join-Path $env:TEMP ''MOReiter-Bild3.dll''' & @CRLF & _
+			'$aufb = ($mitAufb -eq ''1''); $dll = Join-Path $env:TEMP ''MOReiter-Bild4.dll''' & @CRLF & _
 			'if ($aufb -and (Test-Path $dll)) { try { Add-Type -Path $dll } catch { Remove-Item $dll -ErrorAction SilentlyContinue } }' & @CRLF & _
 			'if ($aufb -and -not (''MorBild'' -as [type])) { try { Add-Type -ReferencedAssemblies System.Drawing -OutputAssembly $dll -OutputType Library -TypeDefinition @"' & @CRLF & _
 			'using System; using System.Drawing; using System.Drawing.Imaging; using System.Runtime.InteropServices;' & @CRLF & _
@@ -8628,6 +8629,23 @@ Func OcrStarten()
 			'    }' & @CRLF & _
 			'    Marshal.Copy(p, 0, d.Scan0, n); b.UnlockBits(d); return b;' & @CRLF & _
 			'  }' & @CRLF & _
+			'  // Trennstreifen zwischen zwei Spalten: die breiteste Folge (fast) leerer Bildspalten im Umkreis r um x0 (in der' & @CRLF & _
+			'  // Datumsspalte stand der Streifen sonst z.B. auf der letzten Ziffer der Jahreszahl), Rueckgabe ihre Mitte, sonst x0' & @CRLF & _
+			'  public static int Luecke(Bitmap src, int x0, int r) {' & @CRLF & _
+			'    int w = src.Width, h = src.Height, a = Math.Max(1, x0 - r), e = Math.Min(w - 2, x0 + r); if (e <= a) return x0;' & @CRLF & _
+			'    Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppArgb);' & @CRLF & _
+			'    using (Graphics g = Graphics.FromImage(b)) g.DrawImage(src, 0, 0, w, h);' & @CRLF & _
+			'    BitmapData d = b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);' & @CRLF & _
+			'    int n = d.Stride * h; byte[] p = new byte[n]; Marshal.Copy(d.Scan0, p, 0, n); b.UnlockBits(d); b.Dispose();' & @CRLF & _
+			'    int grenze = Math.Max(3, h / 100), best = x0, bestL = 0, start = -1;' & @CRLF & _
+			'    for (int x = a; x <= e + 1; x++) {' & @CRLF & _
+			'      bool leer = false;' & @CRLF & _
+			'      if (x <= e) { int z = 0; for (int y = 0; y < h; y++) { int i = y * d.Stride + x * 4; if (p[i] + p[i + 1] + p[i + 2] < 300) z++; } leer = z <= grenze; }' & @CRLF & _
+			'      if (leer) { if (start < 0) start = x; }' & @CRLF & _
+			'      else if (start >= 0) { int l = x - start; if (l > bestL) { bestL = l; best = (start + x - 1) / 2; } start = -1; }' & @CRLF & _
+			'    }' & @CRLF & _
+			'    return bestL >= 2 ? best : x0;' & @CRLF & _
+			'  }' & @CRLF & _
 			'}' & @CRLF & _
 			'"@; Add-Type -Path $dll } catch { $aufb = $false } }' & @CRLF & _
 			'$asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq ''AsTask'' -and ' & _
@@ -8657,6 +8675,7 @@ Func OcrStarten()
 			'        $gs.DrawImage($b1, (New-Object Drawing.Rectangle ($zl + $i * ($cw + $zl)), $zl, $cw, $ch), (New-Object Drawing.Rectangle $zx0, $zy, $cw, $ch), $px) }' & @CRLF & _
 			'      $gs.Dispose(); $b1.Dispose()' & @CRLF & _
 			'    } elseif ($g1 -gt 0 -and $g2 -gt $g1 -and $g2 -lt $w0) {' & @CRLF & _
+			'      if (''MorBild'' -as [type]) { $l1 = [MorBild]::Luecke($b1, $g1, 12); $l2 = [MorBild]::Luecke($b1, $g2, 12); if ($l1 -gt 0 -and $l2 -gt $l1 -and $l2 -lt $w0) { $g1 = $l1; $g2 = $l2 } }' & @CRLF & _
 			'      $b = New-Object Drawing.Bitmap -ArgumentList ($w0 + 2 * $lu), $h0' & @CRLF & _
 			'      $gs = [Drawing.Graphics]::FromImage($b); $gs.Clear([Drawing.Color]::White)' & @CRLF & _
 			'      $px = [Drawing.GraphicsUnit]::Pixel' & @CRLF & _
