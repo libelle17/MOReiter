@@ -7690,6 +7690,12 @@ Func KarteiTypSuchen($hWnd, $hGrid, $typ, $richtung, $fest)
 			EndIf
 		EndIf
 		If $db = 1 Then
+			; Typ im Bild nicht gelesen (z.B. "xx"), aber laut Datenbank ein Eintrag zu Tag und Uhrzeit der Zeile
+			$im = KarteiTypLeerImBild($z, $ys, $richtung, $liste)
+			If $im >= 0 Then
+				If $gAufrufProtokoll Then Protokoll("Strg+Umsch+F: Zeile " & $z[$im][1] & " mit nicht gelesenem Typ, laut Datenbank " & $typ)
+				Return KarteiTypKlicken($hWnd, $hGrid, $z[$im][3], $typ, KarteiZeilenTag($z, $im), $z[$im][1])
+			EndIf
 			Local $j = -1
 			If $richtung < 0 Then
 				; Tag der markierten Stelle: letztes Datum im Bild auf deren Hoehe oder darueber; Eintraege dieses
@@ -7777,6 +7783,24 @@ Func KarteiTypImBild($z, $ys, $richtung, $typ, $weich)
 		If $richtung < 0 And $z[$i][3] >= $ys Then ContinueLoop
 		If $richtung > 0 And $z[$i][3] <= $ys + 14 Then ContinueLoop
 		If TypPasst($z[$i][2], $typ) Or ($weich And TypAnfang($z[$i][2], $typ)) Then Return $i
+	Next
+	Return -1
+EndFunc
+
+; wie KarteiTypImBild, aber fuer Zeilen ohne gelesenen Typ: die naechste ueber bzw. unter $ys, deren Tag und Uhrzeit
+; ein Eintrag der Datenbankliste $liste (TypEintraege) hat; Rueckgabe Index oder -1
+Func KarteiTypLeerImBild($z, $ys, $richtung, $liste)
+	Local $n = UBound($z)
+	For $k = 0 To $n - 1
+		Local $i = ($richtung < 0) ? $n - 1 - $k : $k
+		If $richtung < 0 And $z[$i][3] >= $ys Then ContinueLoop
+		If $richtung > 0 And $z[$i][3] <= $ys + 14 Then ContinueLoop
+		If $z[$i][2] <> "" Or $z[$i][1] = "" Then ContinueLoop
+		Local $tag = KarteiZeilenTag($z, $i)
+		If $tag = "" Then ContinueLoop
+		For $m = 0 To UBound($liste) - 1
+			If $liste[$m][0] = $tag And $liste[$m][1] = $z[$i][1] Then Return $i
+		Next
 	Next
 	Return -1
 EndFunc
@@ -7893,6 +7917,7 @@ Func KarteiTypTag($hWnd, $hGrid, $typ, $d, $t, $dVor = "", $wahl = "erster")
 	Next
 	; kein Treffer mit Typ und Uhrzeit: Ausweichregeln auf der zuletzt gelesenen Seite
 	Local $n = UBound($z), $minT = TypMinuten($t), $besterTyp = -1, $abstand = 99999, $nurZeit = -1, $zeitZahl = 0, $ersatz = -1, $tag = ""
+	Local $leer = -1
 	For $i = 0 To $n - 1
 		If $z[$i][0] <> "" Then $tag = $z[$i][0]
 		If $gehoert[$i] Then
@@ -7905,6 +7930,8 @@ Func KarteiTypTag($hWnd, $hGrid, $typ, $d, $t, $dVor = "", $wahl = "erster")
 			ElseIf $z[$i][1] = $t Then
 				If $nurZeit < 0 Then $nurZeit = $i
 				$zeitZahl += 1
+				; Typ nicht gelesen (z.B. "xx" liest die Texterkennung gar nicht): erste bzw. letzte solche Zeile
+				If $z[$i][2] = "" And ($leer < 0 Or $wahl <> "erster") Then $leer = $i
 			EndIf
 		EndIf
 		If $tag <> "" And $tag > $dVor And $tag < $d And TypPasst($z[$i][2], $typ) And $z[$i][1] = $t Then $ersatz = $i
@@ -7912,6 +7939,10 @@ Func KarteiTypTag($hWnd, $hGrid, $typ, $d, $t, $dVor = "", $wahl = "erster")
 	If $besterTyp >= 0 Then Return KarteiTypKlicken($hWnd, $hGrid, $z[$besterTyp][3], $typ, $d, $z[$besterTyp][1])
 	If $ersatz >= 0 Then Return KarteiTypKlicken($hWnd, $hGrid, $z[$ersatz][3], $typ, $d, $t)
 	If $nurZeit >= 0 And $zeitZahl = 1 Then Return KarteiTypKlicken($hWnd, $hGrid, $z[$nurZeit][3], $typ, $d, $t)
+	If $leer >= 0 Then
+		If $gAufrufProtokoll Then Protokoll("Strg+Umsch+F: Zeile mit " & $t & " und nicht gelesenem Typ genommen")
+		Return KarteiTypKlicken($hWnd, $hGrid, $z[$leer][3], $typ, $d, $t)
+	EndIf
 	Return "Typ " & $typ & " am " & DatumText($d) & " um " & $t & " (laut Datenbank) nicht im Bild gefunden"
 EndFunc
 
@@ -10007,8 +10038,12 @@ Func BmpErzeugen($wo)
 	If $wo = "FC" Or $wo = "Explorer" Then
 		$dateien = ($wo = "FC") ? BmpFCAuswahl() : BmpExplorerAuswahl()
 		If @error Then Return Meldung("Medikationsplan: keine Datei markiert (" & (($wo = "FC") ? "FreeCommander" : "Explorer") & ")")
-		Local $m = StringRegExp($dateien[0], "(?i)\\dok\\(\d{1,9})\\", 1)
-		If Not @error Then $pid = Int($m[0])
+		; Patientennummer aus dem Dokumentenordner ([Dokumente] Dok=, Vorgabe p:\dok): <Dok>\<Pat_id>\...
+		Local $dok = StringRegExpReplace(Einst("Dokumente", "Dok", "p:\dok"), "\\+$", "") & "\"
+		If $dok <> "\" And StringLeft($dateien[0], StringLen($dok)) = $dok Then
+			Local $m = StringRegExp(StringTrimLeft($dateien[0], StringLen($dok)), "^(\d{1,9})\\", 1)
+			If Not @error Then $pid = Int($m[0])
+		EndIf
 	Else
 		$dateien = BmpKarteiDateien($pid, $herkunft)
 		If @error Then

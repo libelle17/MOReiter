@@ -1,16 +1,16 @@
 # MOReiter – Tastenkürzel für Medical Office
 
 MOReiter läuft unauffällig im Hintergrund (Symbol im Infobereich der Taskleiste) und bedient Medical Office per
-Tastatur an Stellen, wo es sonst nur die Maus gibt, und erledigt darüber hinaus einige Routinearbeiten. Was davon
+Tastatur an Stellen, wo es sonst nur die Maus gibt, und es erledigt darüber hinaus einige Routinearbeiten. Was davon
 nutzbar ist, hängt davon ab, was die Praxis außer Medical Office hat. Die Funktionen sind deshalb in Stufen gegliedert,
 von „geht überall“ bis „braucht eine Schattendatenbank“.
 
 MOReiter ist kein Produkt der Indamed EDV-Entwicklung und Vertrieb GmbH und wird von ihr nicht
 unterstützt. Benutzung auf eigene Verantwortung, ohne Gewährleistung (s. [LICENSE](LICENSE), GPL-3.0).
 
-## 1. Mit Medical Office allein (verschlüsselter Dateispeicher, ohne quelle)
+## 1. Standardinstallation
 
-So, wie Medical Office üblicherweise eingerichtet ist: die Dokumente liegen verschlüsselt in .moc-Dateien.
+Medical Office, wie es üblicherweise eingerichtet ist (die Dokumente liegen verschlüsselt in .moc-Dateien).
 
 Bedienung, ganz ohne Datenbankzugriff:
 
@@ -18,7 +18,8 @@ Bedienung, ganz ohne Datenbankzugriff:
 - Krankenblattfilter (Filter-Reiter links oder unten): Strg+Alt+1, 2, 3 … bzw. Ziffernblock,
 - Diagnose-Kurzwahl: Strg+Alt+1, 2, 3 … bzw. Ziffernblock,
 - Termine des Patienten zeigen, solange Strg+Alt+T gehalten wird – aus jedem Programm,
-- Tagesübersicht: Strg+Alt+A hakt die markierte offene Aufgabe ab, Alt+Pfeil wechselt den Bereich,
+- Tagesübersicht: Strg+Alt+A hakt die offene Aufgabe ab, auf der der Tastaturcursor sitzt (blau markiert),
+  Alt+Pfeil wechselt den Bereich,
 - Karteikarte: Strg+Umsch+G blättert zu einem abgefragten Datum (liest die Liste mit der Texterkennung von Windows),
 - Editor von Medical Office (z.B. Autotext im Datenpflegesystem): F2 speichert und schließt zuverlässig (bzw.
   schließt, wenn nichts geändert wurde), Strg+Umsch+S „Speichern unter“, Alt+D öffnet das Datei-Menü; landet
@@ -27,10 +28,12 @@ Bedienung, ganz ohne Datenbankzugriff:
   dann vier Wochenstufen mit Datum, „(nach dem Essen)“ und Grund, Zeilen 2–4 als Fremdverordnung; im Medikamentenkatalog klappt Alt+W
   „Alle Wirkstärken“ auf,
 - **Medikationsplan übernehmen aus Dateien:** Strg+Alt+Ü auf PDFs oder Bildern (Scan, Fax, aus der ePA gespeichert),
-  die im FreeCommander oder Windows-Explorer markiert sind, liest den Data-Matrix-Code des bundeseinheitlichen
-  Medikationsplans und legt das XML wie ein Medikationsplan-Scanner im BMP-Ordner ab (`[BMP] Ordner=`, Vorgabe
-  `P:\BMP`), aus dem Medical Office die Medikamente über „Barcodescanner: Dateiauswahl“ übernimmt; gelesen wird mit
-  `BmpLesen.exe` (s. unten),
+  auf denen im FreeCommander oder Windows-Explorer der Tastaturcursor sitzt (blau markiert; auch mehrere markierte
+  Dateien), liest den Data-Matrix-Code des bundeseinheitlichen Medikationsplans und legt das XML wie ein
+  Medikationsplan-Scanner im BMP-Ordner ab (`[BMP] Ordner=`, Vorgabe `P:\BMP`; ist er nicht erreichbar, der Ordner
+  `BMP` unter „Dokumente“ des Benutzers). Von dort übernimmt Medical Office die Medikamente im Dosierplan mit Strg+L,
+  wenn in der Datenpflege „Barcodescanner: Dateiauswahl“ mit diesem Ordner eingestellt ist (s. unten
+  `BMP-Einstellung-MO.ps1`). Gelesen wird mit `BmpLesen.exe` (s. Voraussetzungen),
 - Briefversand, ePA-Hochladen, zuletzt geöffnete Patienten, Hauptmenü …,
 - Strg+Alt zeigt farbig, welche Tasten in der aktuellen Ansicht was bewirken,
 - Strg+Alt+F1 zeigt die Hilfe mit allen Tasten, die auf diesem PC eingerichtet sind,
@@ -42,46 +45,58 @@ s. `[Allgemein] Zugang=` in `MOReiter-Vorgaben.ini`):
 - Karteikarte: Strg+Umsch+F springt zum vorigen (bzw. von oben aus zum nächsten) Eintrag eines abgefragten Typs
   (auch nur dessen Anfang oder ein Teil davon), mit Blick in die Datenbank, ob es überhaupt einen gibt,
 - BMI: Strg+Alt+B, dann M zeigt den BMI nach dem jüngsten Gewicht mit Größe, Gewicht und deren Datum,
-- Strg+Alt+D öffnet den Dokumentenordner des Patienten (`p:\dok\<Patientennummer>`) im Explorer,
 - Accu-Chek Smart Pix: Patient wählen bzw. Patientenliste mit Medical Office abgleichen.
 
 Mit Schreibzugriff auf die Datenbank:
 
 - `BMP-Einstellung-MO.ps1` trägt für alle Arbeitsplätze „Barcodescanner: Dateiauswahl“ mit dem BMP-Ordner ein
   (`medoff.med95ini`, mit Änderungsprotokoll in `dbsprot` wie bei einer Eingabe in Medical Office; wiederholbar für
-  neue PCs, ohne `-Ausfuehren` nur Probelauf).
+  neue PCs, ohne `-Ausfuehren` nur Probelauf). Der BMP-Ordner muss dann auf allen PCs unter demselben Pfad
+  erreichbar sein, am besten als gemeinsamer Netzordner.
 
-## 2. Zusätzlich mit unverschlüsseltem Dateispeicher
+## 2. Unverschlüsselter Dateispeicher
 
-Manche Praxen lassen sich den Dateispeicher von Medical Office (`…\indamed\dat\files`) vom Anbieter unverschlüsselt
-einrichten. Dann geht zusätzlich:
+Falls der Dateispeicher von Medical Office (z.B. `c:\indamed\dat\files\` oder `c:\medoff\dat\files\`, im Netz
+entsprechend auf dem Server) unverschlüsselt ist, geht zusätzlich:
 
-- **Medikationsplan übernehmen aus der Karteikarte:** Strg+Alt+Ü auf der markierten Zeile eines Dokuments (z.B. eines
-  aus der ePA übernommenen Medikationsplans): Datum und Uhrzeit der Zeile liest die Texterkennung, die Dateien
-  dazu holt MOReiter aus der Datenbank und dem Dateispeicher und gibt sie an `BmpLesen.exe`; die Meldung warnt, wenn
-  der Plan zu einem anderen Patienten gehört oder mehrere Dokumente derselben Minute Pläne enthalten,
+- **Medikationsplan übernehmen aus der Karteikarte:** Strg+Alt+Ü auf der Zeile eines Dokuments, auf der in der
+  Karteikarte der Tastaturcursor sitzt (blau markiert), z.B. eines aus der ePA übernommenen Medikationsplans: Datum
+  und Uhrzeit der Zeile liest die Texterkennung, die Dateien dazu holt MOReiter aus der Datenbank (Lesezugriff nötig)
+  und dem Dateispeicher (`[BMP] MODateien=`) und gibt sie an `BmpLesen.exe`; die Meldung warnt, wenn der Plan zu
+  einem anderen Patienten gehört oder mehrere Dokumente derselben Minute Pläne enthalten,
 - `BmpLesen.exe -e Datei.moc Ausgabe` entpackt beliebige .moc-Dateien von Medical Office (XPRESS-Huffman, schnell).
 
-## 3. Labor über onlinebefunde
+## 3. Gemeinsamer Dokumentenordner
+
+Falls die Praxis außer Medical Office einen gemeinsamen Netzordner mit einem Unterordner je Patient hat, benannt
+nach dessen Patientennummer (`[Dokumente] Dok=`, Vorgabe `p:\dok`, also z.B. `p:\dok\12345\`), geht zusätzlich:
+
+- Strg+Alt+D öffnet den Ordner des Patienten, der in Medical Office geöffnet ist, im Explorer,
+- abgerufene Laborbefunde und Zuckerberichte (Stufen 4 und 5) werden auf Wunsch in den Ordner des Patienten
+  eingeordnet (`[Dokumente] Patientenordner=1`; ohne Patientennummer ein Ordner nach Name und Geburtsdatum),
+- Strg+Alt+Ü im FreeCommander oder Explorer erkennt am Ordner, zu welchem Patienten eine Datei gehört, und warnt,
+  wenn der Medikationsplan auf einen anderen Namen lautet.
+
+## 4. Labor über onlinebefunde
 
 Für Praxen, deren Labor die Befunde auf onlinebefunde.labor-staber.de bereitstellt:
 
-- Strg+O ruft die Laborbefunde des Patienten im Firefox ab, legt die PDFs ab und ordnet sie auf Wunsch weiter ein
-  (Patientenordner; mit Datenbankzugriff über die Patientennummer).
+- Strg+O ruft die Laborbefunde des Patienten im Firefox ab, legt die PDFs ab (`[Labor] Ablage=`) und ordnet sie auf
+  Wunsch weiter ein (s. Stufe 3).
 
-## 4. Zuckerwerte aus den Portalen
+## 5. Zuckerwerte aus den Portalen
 
 - Zuckerberichte aus LibreView, Dexcom Clarity, Glooko, YourLoops und EasyView (Strg+L, D, G, Y, E), Ablage und
   Umbenennung der PDFs (den Berichtszeitraum für den Dateinamen liest `pdftotext.exe` aus dem PDF),
 - Strg+Z ruft alle Portale nach den Markierungen des Patienten in Medical Office ab (braucht den Datenbankzugriff).
 
-## 5. Mit Schattendatenbank (quelle, Dateilese)
+## 6. Mit Schattendatenbank (quelle, Dateilese)
 
 Für Praxen, die die Daten von Medical Office laufend mit Dateilese in eine eigene Datenbank „quelle“ übertragen:
 
 - Einzelübertrag des Patienten von Medical Office nach quelle: Strg+Ü (Dateilese vonmo), mit Erfolgs- bzw. Fehlermeldung,
 - Patientenlaufzettel, Arztbrief und FreeCommander mit dem Patientenordner (Strg+P, Strg+Umsch+P, Strg+A, Strg+I
-  aus `[Aufrufe]`), auch in der Tagesübersicht mit dem Patienten der markierten Zeile,
+  aus `[Aufrufe]`), auch in der Tagesübersicht mit dem Patienten der Zeile, auf der der Tastaturcursor sitzt,
 - Arztbrief übernehmen: b, e schnell nacheinander in der Karteikarte kopiert den ganzen Text des jüngsten offenen
   Arztbriefs (Word oder LibreOffice, von Dateilese angelegt) des Patienten in einen neuen Brief aus der Vorlage
   eArztbrief (q, e, a) und speichert mit F2,
