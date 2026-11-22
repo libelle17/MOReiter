@@ -164,7 +164,8 @@ Es gibt zwei Wege; für die meisten Praxen ist A der einfachere. Eine Anmeldung 
    Gespeichert wird in `MOReiter-Praxis.ini`. Später lässt sich alles mit `Einstellungen.bat` ändern.
 5. **Start:** MOReiter startet von `%APPDATA%\MOReiter` aus und erscheint als Symbol im Infobereich der
    Taskleiste (ggf. unter dem kleinen Pfeil). Für den Start beim Anmelden legt `Einrichten.bat` eine Verknüpfung
-   im Autostart-Ordner des Benutzers an (abzuschalten im Fenster „MOReiter einrichten“). Es läuft immer nur
+   im Autostart-Ordner des Benutzers an (abzuschalten im Fenster „MOReiter einrichten“), außerdem eine im
+   Startmenü, so dass MOReiter nach der Windows-Taste beim Tippen von „MOR…“ zur Auswahl erscheint. Es läuft immer nur
    einmal gleichzeitig; ein Doppelaufruf beendet sich still.
    **Virenschutz:** Weil MOReiter die Tastatur auf seine Kürzel hin beobachtet, halten manche Virenscanner es
    für verdächtig und entfernen `MOReiter.exe` stillschweigend (dann läuft es nach `Einrichten.bat` nicht, und
@@ -260,7 +261,7 @@ prüfen Sie selbst, ob die Nutzungsbedingungen des jeweiligen Portals diese Art 
 | Datei | wofür |
 |---|---|
 | `Kompilieren.bat` | erstellt `MOReiter.exe` (lädt bei Bedarf AutoIt3), fragt beim ersten Mal die Einstellungen ab und startet `Einrichten.bat` |
-| `Einrichten.bat` | kopiert MOReiter nach `%APPDATA%\MOReiter`, legt die Autostart-Verknüpfung an und startet es |
+| `Einrichten.bat` | kopiert MOReiter nach `%APPDATA%\MOReiter`, legt die Verknüpfungen im Autostart und im Startmenü an und startet es |
 | `Einstellungen.bat` | ändert später die Einstellungen der Praxis (Fenster „MOReiter einrichten“) und richtet neu ein |
 | `MOReiter.au3` | Quelltext |
 | `MOReiter-Hilfe.txt` | Hilfetext für Strg+Alt+F1, wird in die exe eingebettet |

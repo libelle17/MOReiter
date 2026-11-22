@@ -43,6 +43,10 @@ set LNK=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\MOReiter.lnk
 if "%AUTO%"=="0" if exist "%LNK%" del "%LNK%"
 if "%AUTO%"=="1" powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('%LNK%'); $s.TargetPath='%APPDATA%\MOReiter\MOReiter.exe'; $s.WorkingDirectory='%APPDATA%\MOReiter'; $s.Save()"
 if "%AUTO%"=="1" echo Autostart: %LNK%
+rem Startmenue: Verknuepfung unter Programme, damit MOReiter nach der Windows-Taste (bzw. in Open-Shell) beim Tippen der
+rem Anfangsbuchstaben zur Auswahl erscheint (der Autostart-Ordner wird dafuer nicht durchsucht)
+set SLNK=%APPDATA%\Microsoft\Windows\Start Menu\Programs\MOReiter.lnk
+powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('%SLNK%'); $s.TargetPath='%APPDATA%\MOReiter\MOReiter.exe'; $s.WorkingDirectory='%APPDATA%\MOReiter'; $s.Description='MOReiter: Tastenkuerzel fuer Medical Office (Hilfe: Strg+Alt+F1)'; $s.Save()"
 rem ueber Start-Process (ShellExecute) statt start: mit start erbt MOReiter die Handles des Aufrufers, auch eine Pipe,
 rem und wer die Ausgabe liest (z.B. Claude Code), wartet dann, bis MOReiter beendet wird
 powershell -NoProfile -Command "Start-Process -FilePath '%APPDATA%\MOReiter\MOReiter.exe' -WorkingDirectory '%APPDATA%\MOReiter'"
