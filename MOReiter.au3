@@ -129,7 +129,8 @@
 ;                              Kommt das e nicht rechtzeitig, erreichen das b und die naechste Taste MO wie getippt;
 ;                              das b zaehlt nur nach VorPause=500 ms ohne Tastendruck (nicht mitten im Tippen); waehrend
 ;                              des Ablaufs ist die Tastatur gesperrt (nur Esc); derselbe Brief ein zweites Mal nur nach
-;                              Rueckfrage
+;                              Rueckfrage; folgt auf b, e binnen NachPause=500 ms eine weitere Taste (z.B. "bew", Autotext
+;                              Bewegung), gehen alle drei wie getippt an MO
 ;            Strg+Alt+Ue       Medikationsplan (BMP) als XML nach P:\BMP (BmpErzeugen, BmpLesen.exe): in der Karteikarte aus
 ;                              dem Dokument der markierten Zeile (Texterkennung Datum/Uhrzeit, Dateien aus medoff),
 ;                              im FreeCommander (Alt+Einfg) bzw. Explorer aus den markierten Dateien
@@ -295,6 +296,10 @@ Const $defFolgeZeit = 2000 ; ms, eine laengere Pause zwischen zwei Ziffern begin
 ; Kuerzel der Briefvorlage, die MOReiter dann in der Karteikarte tippt
 Const $defBEFolge = "be", $defBEZeit = 600, $defBEKuerzel = "qea", $defBEWarten = 10000, $defBEPause = 500, $defBEVorPause = 500
 Global $gBEErst = 0, $gBEZweit = 0, $gBEZeit = 0, $gBEOffen = 0, $gBEScan = 0, $gBEVorPause = $defBEVorPause
+; nach b, e noch [BriefEinfuegen] NachPause= ms warten: folgt eine weitere Taste (z.B. das w des Autotexts "bew"), gehen
+; b, e und diese Taste an Medical Office, sonst wird der Brief eingefuegt; Zeitpunkt des zurueckgehaltenen e (0 = keins)
+Const $defBENachPause = 500
+Global $gBENachPause = $defBENachPause, $gBEZweitOffen = 0, $gBEScan2 = 0
 ; letzter echter Tastendruck (ausser Strg, Alt, Umsch): b zaehlt nur nach [BriefEinfuegen] VorPause= ms Ruhe, damit
 ; ein b, e mitten im fluessigen Tippen den Brief nicht einfuegt
 Global $gTasteZeit = 0
@@ -441,6 +446,12 @@ While 1
 		$gBEOffen = 0
 		BENachliefern()
 	EndIf
+	; b, e und danach Ruhe: jetzt den Brief einfuegen
+	If $gBEZweitOffen And TimerDiff($gBEZweitOffen) > $gBENachPause Then
+		$gBEZweitOffen = 0
+		If $gLaeuft <> "" Then $gBesetzt = "BriefEinfuegen"
+		$gAufgabe = "BriefEinfuegen"
+	EndIf
 	; Tastensperre nie ueber das Ende der Aufgabe hinaus
 	If $gTastenSperre And $gLaeuft = "" And $gAufgabe = "" Then $gTastenSperre = False
 	If $gAufgabe <> "" Then
@@ -566,12 +577,26 @@ Func TastenHook($nCode, $wParam, $lParam)
 			EndIf
 			; b, e in der Karteikarte: das b wird zurueckgehalten; folgt rechtzeitig das e, wird der Brief eingefuegt,
 			; sonst kommen das b und die naechste Taste in dieser Reihenfolge doch noch an
+			; nach b, e noch eine Taste innerhalb NachPause (z.B. "bew", Autotext Bewegung): alle drei an Medical Office
+			If $gBEZweitOffen Then
+				If $vk = $gBEZweit Then Return 1 ; automatische Wiederholung des gehaltenen e
+				$gBEZweitOffen = 0
+				BENachliefern(True)
+				DllCall("user32.dll", "none", "keybd_event", "byte", $vk, "byte", $kb.scanCode, "dword", BitAND($kb.flags, 1), "ulong_ptr", $Kennung)
+				Return 1
+			EndIf
 			If $gBEOffen Then
 				If $vk = $gBEErst Then Return 1 ; automatische Wiederholung des gehaltenen b
 				Local $beZeit = TimerDiff($gBEOffen)
 				$gBEOffen = 0
 				If $vk = $gBEZweit And $beZeit <= $gBEZeit And OhneModifier() Then
 					If Not StringInStr($gUnten, "," & $vk & ",") Then $gUnten &= "," & $vk & ","
+					; erst nach NachPause ohne weitere Taste (Hauptschleife), sonst sofort
+					If $gBENachPause > 0 Then
+						$gBEScan2 = $kb.scanCode
+						$gBEZweitOffen = TimerInit()
+						Return 1
+					EndIf
 					If $gLaeuft <> "" Then $gBesetzt = "BriefEinfuegen"
 					$gAufgabe = "BriefEinfuegen"
 					Return 1
@@ -1438,11 +1463,14 @@ Func KarteiFokus()
 	Return $f <> 0 And KarteiGrid($f)
 EndFunc
 
-; das zurueckgehaltene erste Zeichen von [BriefEinfuegen] Folge doch noch an Medical Office (Druecken und Loslassen;
-; das echte Loslassen schluckt der Hook ueber $gUnten)
-Func BENachliefern()
+; das zurueckgehaltene erste Zeichen von [BriefEinfuegen] Folge (mit $beide auch das zweite) doch noch an Medical Office
+; (Druecken und Loslassen; das echte Loslassen schluckt der Hook ueber $gUnten)
+Func BENachliefern($beide = False)
 	DllCall("user32.dll", "none", "keybd_event", "byte", $gBEErst, "byte", $gBEScan, "dword", 0, "ulong_ptr", $Kennung)
 	DllCall("user32.dll", "none", "keybd_event", "byte", $gBEErst, "byte", $gBEScan, "dword", 2, "ulong_ptr", $Kennung)
+	If Not $beide Then Return
+	DllCall("user32.dll", "none", "keybd_event", "byte", $gBEZweit, "byte", $gBEScan2, "dword", 0, "ulong_ptr", $Kennung)
+	DllCall("user32.dll", "none", "keybd_event", "byte", $gBEZweit, "byte", $gBEScan2, "dword", 2, "ulong_ptr", $Kennung)
 EndFunc
 
 ; b, e in der Liste der Karteikarte: im offenen Word- oder LibreOffice-Fenster mit dem juengsten Arztbrief des in Medical Office geoeffneten
@@ -3073,6 +3101,7 @@ Func AufrufeLaden()
 	Local $beFolge = StringLower(StringStripWS(Einst("BriefEinfuegen", "Folge", $defBEFolge), 8))
 	$gBEZeit = StringRegExp($beFolge, "^[a-z]{2}$") ? Int(Einst("BriefEinfuegen", "Zeit", $defBEZeit)) : 0
 	$gBEVorPause = Int(Einst("BriefEinfuegen", "VorPause", $defBEVorPause))
+	$gBENachPause = Int(Einst("BriefEinfuegen", "NachPause", $defBENachPause))
 	If $gBEZeit > 0 Then
 		$gBEErst = Asc(StringUpper(StringLeft($beFolge, 1)))
 		$gBEZweit = Asc(StringUpper(StringRight($beFolge, 1)))
