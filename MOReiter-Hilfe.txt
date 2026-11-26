@@ -67,7 +67,7 @@ Strg+Alt+M, dann P bzw. K
                     Metformin-Steigerungsplan für den aktuellen Patienten: erst fragt ein Fenster
                     "Therapiebeginn" das Datum ab (Vorgabe heute; Enter bestätigt, Esc bricht ab), die
                     Wochen zählen ab diesem Tag; dann Filter Medplan (Strg+Alt+3),
-                    jüngsten Dosierplan wiederholen (gibt es keinen, einen neuen anlegen) und viermal
+                    jüngsten Dosierplan ändern (gibt es keinen, einen neuen anlegen) und viermal
                     Metformin 1000 mg N3 eintragen, je eine Woche, mit "(nach dem Essen)":
                     abends 0,5 / abends 1 / morgens 0,5 + abends 1 / ab der 4. Woche 1-0-1;
                     P: nicht nur rabattierte Präparate, Privatrezept, Grund "Stoffwechsel";

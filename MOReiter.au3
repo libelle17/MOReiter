@@ -114,7 +114,7 @@
 ;                              MOReiter den Editor nach vorn (sonst nahm er scheinbar keine Tasten mehr an)
 ;            Strg+Alt+M, dann P bzw. K  in Medical Office: Metformin-Steigerungsplan fuer den aktuellen Patienten
 ;                              (fragt zuerst den Therapiebeginn ab, Vorgabe heute, Enter/Esc;
-;                              Filter Medplan, juengsten Dosierplan wiederholen bzw. neuen anlegen, viermal
+;                              Filter Medplan, juengsten Dosierplan aendern (w) bzw. neuen anlegen, viermal
 ;                              Metformin 1000 mg N3 eintragen: abends 0,5 / 1 / morgens 0,5 abends 1 / 1-0-1, je
 ;                              eine Woche, mit "(nach dem Essen)"; P: Privatrezept, nicht nur rabattierte, Grund
 ;                              "Stoffwechsel"; K: Kassenrezept, nur rabattierte, Grund "Zucker"; Zeilen 2-4 als
@@ -1953,7 +1953,7 @@ Func MedplanAendernAblauf($hWnd)
 EndFunc
 
 ; Strg+Alt+M, P bzw. K: Metformin-Steigerungsplan. Kartei-Filter Medplan ([Metformin] Filter=, Vorgabe 3 wie
-; Strg+Alt+3), Strg+Ende, Pfeil hoch, w (juengsten Dosierplan wiederholen); ruckt die Markierung bei Pfeil hoch
+; Strg+Alt+3), Strg+Ende, Pfeil hoch, w (juengsten Dosierplan aendern); ruckt die Markierung bei Pfeil hoch
 ; nicht nach oben, gibt es keinen Plan, dann "mp" (neuer Plan). Im Dosierplan viermal Metformin eintragen
 ; (MetforminZeile), zuletzt F2. Esc bricht zwischen zwei Schritten ab.
 Func MetforminPlan($kasse)
@@ -1993,7 +1993,7 @@ Func MetforminAblauf($hWnd, $kasse)
 	Local $y2 = KarteiMarkiertY($hGrid, $ok2)
 	If $gSucheAbbruch Then Return False
 	If $ok2 And (Not $ok1 Or $y2 < $y1 - 3) Then
-		TasteEinspeisen(0x57, False) ; w: wiederholen
+		TasteEinspeisen(0x57, False) ; w: Dosierplan aendern
 	Else
 		; kein Dosierplan: neuer ueber das Kuerzel
 		TasteEinspeisen(0x23, False, True)
