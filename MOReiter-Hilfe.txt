@@ -198,6 +198,7 @@ Alt+L      Alle
 Alt+M      Meistgenutzt
 Alt+R      Kästchen "nur rabattierte Präparate anzeigen" ein- bzw. ausschalten
 Alt+S      Schließen
+Alt+P      Pfeil rechts an "<Alle Produkte>" (Produktart wählen)
 Strg+F     ins Feld "Suchbegriff eintragen" (alter Begriff markiert, Tippen ersetzt ihn)
 Alt+Umsch+M  ersten Eintrag der Liste markieren
 

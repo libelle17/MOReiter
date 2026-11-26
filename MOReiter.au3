@@ -136,7 +136,7 @@
 ;                              im FreeCommander (Alt+Einfg) bzw. Explorer aus den markierten Dateien
 ;            Alt+W             im Medikamentenkatalog: Klappliste "Alle Wirkstaerken" aufklappen; dort ausserdem
 ;                              Alt+F Favoriten, Alt+L Alle, Alt+M Meistgenutzt, Alt+R "nur rabattierte" um-
-;                              schalten, Alt+S Schliessen, Strg+F ins Suchfeld, Alt+Umsch+M erster Listeneintrag
+;                              schalten, Alt+S Schliessen, Alt+P Pfeil an "<Alle Produkte>", Strg+F ins Suchfeld, Alt+Umsch+M erster Listeneintrag
 ;            Strg+Alt+Umsch+D  Liste der Controls im aktiven Fenster (Klasse, Nummer, Text, Lage) in die
 ;                              Zwischenablage und nach %APPDATA%\MOReiter\Fenster.txt, zum Einrichten neuer Tasten
 ;            Beenden ueber das Tray-Menue (kein Strg+Alt+Q, das waere AltGr+Q = @)
@@ -726,6 +726,8 @@ Func HookAufgabe($vk)
 				Return "Katalog:Rabattiert"
 			Case 0x53
 				Return "Katalog:Schliessen"
+			Case 0x50
+				Return "Katalog:Produkte"
 		EndSwitch
 	EndIf
 	If $vk = 0x46 And StrgAllein() And Not Gedrueckt(0x10) And KatalogAktiv() Then Return "Katalog:Suchen"
@@ -1685,6 +1687,24 @@ Func KatalogListe($hKat)
 	Return 0
 EndFunc
 
+; Knopf "<Alle Produkte>" im Medikamentenkatalog (zeigt nach der Wahl die Produktart, daher der breite TNewBitBtn
+; rechts von "Eigenmed."), sonst 0
+Func KatalogProdukte($hKat)
+	Local $h = KatalogKnopf($hKat, "TNewBitBtn", "<Alle Produkte>")
+	If $h Then Return $h
+	Local $e = KatalogKnopf($hKat, "TNewBitBtn", "Eigenmed.")
+	If Not $e Then Return 0
+	Local $pe = WinGetPos($e)
+	For $i = 1 To 40
+		$h = ControlGetHandle($hKat, "", "[CLASS:TNewBitBtn; INSTANCE:" & $i & "]")
+		If @error Then ExitLoop
+		If Not _WinAPI_IsWindowVisible($h) Then ContinueLoop
+		Local $p = WinGetPos($h)
+		If $p[1] = $pe[1] And $p[0] > $pe[0] + $pe[2] And $p[0] < $pe[0] + $pe[2] + 30 And $p[2] > 100 Then Return $h
+	Next
+	Return 0
+EndFunc
+
 ; Strg+Alt-Einblendung im Medikamentenkatalog: Schildchen an den Knoepfen, am Kaestchen, am Suchfeld und oben in der Liste
 Func KatalogPositionen($hKat, ByRef $pos)
 	KnopfPos($pos, KatalogWirkCombo($hKat), "Alt+W")
@@ -1693,6 +1713,7 @@ Func KatalogPositionen($hKat, ByRef $pos)
 	KnopfPos($pos, KatalogKnopf($hKat, "TNewBitBtn", "Meistgenutzt"), "Alt+M")
 	KnopfPos($pos, KatalogKnopf($hKat, "TmoButton", "Schlie" & ChrW(0xDF) & "en"), "Alt+S")
 	KnopfPos($pos, KatalogKaestchen($hKat), "Alt+R")
+	KnopfPos($pos, KatalogProdukte($hKat), "Alt+P")
 	Local $h = ControlGetHandle($hKat, "", "[CLASS:TAlnumEdit; INSTANCE:1]")
 	If Not @error Then KnopfPos($pos, $h, "Strg+F")
 	$h = KatalogListe($hKat)
@@ -1715,6 +1736,14 @@ Func KatalogTaste($was)
 			$h = KatalogKnopf($hKat, "TNewBitBtn", $was)
 			If Not $h Then Return Meldung("Knopf """ & $was & """ nicht gefunden")
 			ControlClick($hKat, "", $h)
+		Case "Produkte"
+			; der Pfeil ist kein eigenes Control, sondern rechts in den Knopf "<Alle Produkte>" (bzw. die gewaehlte
+			; Produktart) gezeichnet: dorthin klicken
+			$h = KatalogProdukte($hKat)
+			If Not $h Then Return Meldung("Knopf ""<Alle Produkte>"" nicht gefunden")
+			Local $p = WinGetPos($h)
+			If @error Then Return False
+			ControlClick($hKat, "", $h, "left", 1, $p[2] - 10, Int($p[3] / 2))
 		Case "Schliessen"
 			$h = KatalogKnopf($hKat, "TmoButton", "Schlie" & ChrW(0xDF) & "en")
 			If Not $h Then Return Meldung("Knopf ""Schliessen"" nicht gefunden")
