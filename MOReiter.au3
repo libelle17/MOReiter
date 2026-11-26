@@ -980,8 +980,7 @@ Func EinblendungZeigen()
 	ElseIf EditorAktiv() Then
 		EditorPositionen($hWnd, $pos)
 	ElseIf KatalogAktiv() Then
-		Local $hW = KatalogWirkCombo($hWnd)
-		If $hW Then KnopfPos($pos, $hW, "Alt+W")
+		KatalogPositionen($hWnd, $pos)
 	ElseIf TagesAktiv() Then
 		TagesPositionen($hWnd, $pos)
 	ElseIf MOAktiv() Then
@@ -1669,6 +1668,39 @@ Func KatalogKnopf($hKat, $klasse, $text)
 	Return 0
 EndFunc
 
+; Kaestchen "nur rabattierte Praeparate anzeigen" im Medikamentenkatalog, sichtbar, sonst 0
+Func KatalogKaestchen($hKat)
+	Local $h = ControlGetHandle($hKat, "", "[CLASS:TNewCheckBox; INSTANCE:1]")
+	If @error Or Not _WinAPI_IsWindowVisible($h) Or StringLeft(_WinAPI_GetWindowText($h), 15) <> "nur rabattierte" Then Return 0
+	Return $h
+EndFunc
+
+; die sichtbare Praeparateliste im Medikamentenkatalog (TMOListView), sonst 0
+Func KatalogListe($hKat)
+	For $i = 1 To 5
+		Local $h = ControlGetHandle($hKat, "", "[CLASS:TMOListView; INSTANCE:" & $i & "]")
+		If @error Then ExitLoop
+		If _WinAPI_IsWindowVisible($h) Then Return $h
+	Next
+	Return 0
+EndFunc
+
+; Strg+Alt-Einblendung im Medikamentenkatalog: Schildchen an den Knoepfen, am Kaestchen, am Suchfeld und oben in der Liste
+Func KatalogPositionen($hKat, ByRef $pos)
+	KnopfPos($pos, KatalogWirkCombo($hKat), "Alt+W")
+	KnopfPos($pos, KatalogKnopf($hKat, "TNewBitBtn", "Favoriten"), "Alt+F")
+	KnopfPos($pos, KatalogKnopf($hKat, "TNewBitBtn", "Alle"), "Alt+L")
+	KnopfPos($pos, KatalogKnopf($hKat, "TNewBitBtn", "Meistgenutzt"), "Alt+M")
+	KnopfPos($pos, KatalogKnopf($hKat, "TmoButton", "Schlie" & ChrW(0xDF) & "en"), "Alt+S")
+	KnopfPos($pos, KatalogKaestchen($hKat), "Alt+R")
+	Local $h = ControlGetHandle($hKat, "", "[CLASS:TAlnumEdit; INSTANCE:1]")
+	If Not @error Then KnopfPos($pos, $h, "Strg+F")
+	$h = KatalogListe($hKat)
+	Local $p = $h ? WinGetPos($h) : 0
+	; unter den Spaltenkoepfen, auf dem ersten Eintrag
+	If IsArray($p) Then PosDazu($pos, $p[0] + Int($p[2] / 2), $p[1] + 36, "Alt+Umsch+M")
+EndFunc
+
 ; 26.11.26: Tasten im Medikamentenkatalog: Favoriten, Alle, Meistgenutzt (Knoepfe oben), Rabattiert (Kaestchen "nur
 ; rabattierte Praeparate anzeigen" umschalten), Schliessen, Suchen (Strg+F: ins Suchfeld, Inhalt markiert),
 ; Erster (ersten Eintrag der Liste markieren)
@@ -1688,8 +1720,9 @@ Func KatalogTaste($was)
 			If Not $h Then Return Meldung("Knopf ""Schliessen"" nicht gefunden")
 			ControlClick($hKat, "", $h)
 		Case "Rabattiert"
-			Local $vorher = KatalogRabattiert($hKat, $h)
-			If $vorher < 0 Then Return Meldung("Kaestchen ""nur rabattierte"" nicht zu sehen")
+			; ohne KatalogRabattiert: dessen Ablesen am Bildschirm dauert spuerbar, umschalten braucht den Zustand nicht
+			$h = KatalogKaestchen($hKat)
+			If Not $h Then Return Meldung("Kaestchen ""nur rabattierte"" nicht zu sehen")
 			ControlClick($hKat, "", $h, "left", 1, 8, 8)
 		Case "Suchen"
 			$h = ControlGetHandle($hKat, "", "[CLASS:TAlnumEdit; INSTANCE:1]")
@@ -1698,15 +1731,7 @@ Func KatalogTaste($was)
 			; 0xB1 = EM_SETSEL: alles markieren, damit Tippen den alten Suchbegriff ersetzt
 			_SendMessage($h, 0xB1, 0, -1)
 		Case "Erster"
-			$h = 0
-			For $i = 1 To 5
-				Local $l = ControlGetHandle($hKat, "", "[CLASS:TMOListView; INSTANCE:" & $i & "]")
-				If @error Then ExitLoop
-				If _WinAPI_IsWindowVisible($l) Then
-					$h = $l
-					ExitLoop
-				EndIf
-			Next
+			$h = KatalogListe($hKat)
 			If Not $h Then Return Meldung("Liste im Medikamentenkatalog nicht gefunden")
 			If ControlListView($hKat, "", $h, "GetItemCount") < 1 Then Return Meldung("Liste ist leer")
 			ControlFocus($hKat, "", $h)
