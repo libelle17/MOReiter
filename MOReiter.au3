@@ -49,6 +49,7 @@
 ;                              ueber bzw. unter dem gelb umrandeten anklicken (vom obersten zum untersten
 ;                              und umgekehrt, der Trennstrich wird uebersprungen), danach rechts die oberste
 ;                              Zeile der Liste (Alt darf fuer mehrere Schritte gehalten bleiben)
+;            Alt+O             in der MO-Tagesuebersicht: Knopf "Offene To-Dos" druecken
 ;            Strg+Alt+Umsch+K  Kalibrieren: Maus auf Reiter "Kartei" halten und druecken
 ;            Strg+Alt+Umsch+L  Kalibrieren: Maus auf Reiter "Krankenblatt" halten und druecken
 ;            Strg+Alt+Umsch+P  Kalibrieren: Maus auf Reiter "ePA" halten und druecken
@@ -709,6 +710,8 @@ EndFunc
 Func HookAufgabe($vk)
 	; Alt+Pfeil hoch/runter (ohne Strg und Umschalt) nur in der Tagesuebersicht
 	If ($vk = 0x26 Or $vk = 0x28) And AltAllein() And Not Gedrueckt(0x10) And TagesAktiv() Then Return ($vk = 0x26) ? "BereichHoch" : "BereichRunter"
+	; 26.11.26: Alt+O dort: Knopf "Offene To-Dos"
+	If $vk = 0x4F And AltAllein() And Not Gedrueckt(0x10) And TagesAktiv() Then Return "OffeneToDosKlick"
 	; Esc allein im Briefversand: Abbrechen
 	If $vk = 0x1B And Not (Gedrueckt(0x10) Or Gedrueckt(0x11) Or Gedrueckt(0x12) Or Gedrueckt(0x5B) Or Gedrueckt(0x5C)) _
 			And BriefAktiv() Then Return "Brief:Abbrechen"
@@ -1238,6 +1241,8 @@ Func TagesPositionen($hWnd, ByRef $pos)
 		Next
 		If $y <= $unten And FileExists(Einst("Dokumente", "Dok", "p:\dok")) Then RandSchild($pos, $rechts, $y, "Strg+Alt+D Explorer")
 	EndIf
+	Local $hOffen = ControlGetHandle($hWnd, "", "[CLASS:TAdvGlowButton; TEXT:Offene To-Dos]")
+	If Not @error Then KnopfPos($pos, $hOffen, "Alt+O")
 	Opt("PixelCoordMode", 1)
 	If OffeneToDos($hWnd) Then
 		Local $mitte = MarkierteZeile($g)
@@ -1323,6 +1328,7 @@ Func Ausfuehren($aufgabe)
 	If StringLeft($aufgabe, 7) = "Portal:" Then Return Portal(StringTrimLeft($aufgabe, 7))
 	If $aufgabe = "Abhaken" Then Return Abhaken()
 	If $aufgabe = "BereichHoch" Then Return BereichWechsel(-1)
+	If $aufgabe = "OffeneToDosKlick" Then Return OffeneToDosKlick()
 	If $aufgabe = "BereichRunter" Then Return BereichWechsel(1)
 	If $aufgabe = "Hochladen" Then Return Hochladen()
 	If $aufgabe = "Fensterliste" Then Return FensterListe()
@@ -10362,6 +10368,30 @@ Func MarkierteZeile($g)
 	If @error Then Return -1
 	; Treffer ist die obere Rahmenlinie, die Zeile ist 20 Pixel hoch
 	Return $p[1] + Int($ZeilenHoehe / 2)
+EndFunc
+
+; 26.11.26: Alt+O in der Tagesuebersicht: Knopf "Offene To-Dos" druecken; bei eingeklappter Symbolleiste diese dafuer
+; aufklappen (sie bleibt dann offen, man sieht den gewaehlten Knopf)
+Func OffeneToDosKlick()
+	Local $hWnd = _WinAPI_GetForegroundWindow()
+	If _WinAPI_GetClassName($hWnd) <> $TagesKlasse Then Return False
+	; Alt allein losgelassen sprange sonst in die Menueleiste
+	AltMaskieren()
+	Local $hKnopf = ControlGetHandle($hWnd, "", "[CLASS:TAdvGlowButton; TEXT:Offene To-Dos]")
+	If @error Then Return Meldung("Knopf ""Offene To-Dos"" nicht gefunden")
+	Local $p = WinGetPos($hKnopf)
+	If @error Or Not KnopfZuSehen($hKnopf, $p) Then
+		Local $hGrid = ControlGetHandle($hWnd, "", "[CLASS:TNewStringGrid; INSTANCE:1]")
+		If @error Then Return Meldung("Liste der Tagesuebersicht nicht gefunden")
+		; Symbolleiste klickt mit der echten Maus: erst Alt los
+		If Not ModifierLos() Then Return Meldung("Alt bitte loslassen")
+		Local $geklickt, $fehler = Symbolleiste($hWnd, $hGrid, True, $geklickt)
+		If $fehler <> "" Then Return Meldung($fehler)
+		$p = WinGetPos($hKnopf)
+		If @error Then Return Meldung("Knopf ""Offene To-Dos"" nicht sichtbar")
+	EndIf
+	ControlClick($hWnd, "", $hKnopf, "left", 1, Int($p[2] / 2), Int($p[3] / 2))
+	Return True
 EndFunc
 
 ; der Knopf "Offene To-Dos" ist eingedrueckt hellblau hinterlegt; sonst steht in $gOffenGrund, warum nicht.

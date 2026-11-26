@@ -19,7 +19,7 @@ Bedienung, ganz ohne Datenbankzugriff:
 - Diagnose-Kurzwahl: Strg+Alt+1, 2, 3 … bzw. Ziffernblock,
 - Termine des Patienten zeigen, solange Strg+Alt+T gehalten wird – aus jedem Programm,
 - Tagesübersicht: Strg+Alt+A hakt die offene Aufgabe ab, auf der der Tastaturcursor sitzt (blau markiert),
-  Alt+Pfeil wechselt den Bereich,
+  Alt+Pfeil wechselt den Bereich, Alt+O drückt „Offene To-Dos“,
 - Karteikarte: Strg+Umsch+G blättert zu einem abgefragten Datum (liest die Liste mit der Texterkennung von Windows),
 - Editor von Medical Office (z.B. Autotext im Datenpflegesystem): F2 speichert und schließt zuverlässig (bzw.
   schließt, wenn nichts geändert wurde), Strg+Umsch+S „Speichern unter“, Alt+D öffnet das Datei-Menü; landet

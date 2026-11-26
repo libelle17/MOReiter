@@ -168,6 +168,7 @@ Alt+Pfeil hoch/runter
                     in der Bereichsauswahl links den Eintrag über bzw. unter dem gelb umrandeten
                     anklicken, danach rechts die oberste Zeile der Liste; Alt darf für mehrere Schritte
                     gehalten bleiben
+Alt+O               Knopf "Offene To-Dos" drücken (eingeklappte Symbolleiste wird dafür aufgeklappt)
 Strg+P, Strg+Umsch+P, Strg+A, Strg+Ü, Strg+I, Strg+O usw.
                     die Aufrufe aus [Aufrufe] mit {pat} und die Portale (z.B. Laufzettel, Laufzettel neu,
                     Arztbrief, FreeCommander, Onlinebefunde) mit dem Patienten der markierten Zeile
