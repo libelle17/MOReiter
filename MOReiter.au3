@@ -131,6 +131,9 @@
 ;                              des Ablaufs ist die Tastatur gesperrt (nur Esc); derselbe Brief ein zweites Mal nur nach
 ;                              Rueckfrage; folgt auf b, e binnen NachPause=500 ms eine weitere Taste (z.B. "bew", Autotext
 ;                              Bewegung), gehen alle drei wie getippt an MO
+;            m, ae             schnell nacheinander in der Liste der Karteikarte ([MedplanAendern] Folge=, Zeiten wie
+;                              [BriefEinfuegen]): letzten Medikamentenplan aendern (Filter Medplan, Strg+Ende,
+;                              Pfeil hoch, w); Tastatur waehrend des Ablaufs gesperrt, Esc bricht ab
 ;            Strg+Alt+Ue       Medikationsplan (BMP) als XML nach P:\BMP (BmpErzeugen, BmpLesen.exe): in der Karteikarte aus
 ;                              dem Dokument der markierten Zeile (Texterkennung Datum/Uhrzeit, Dateien aus medoff),
 ;                              im FreeCommander (Alt+Einfg) bzw. Explorer aus den markierten Dateien
@@ -302,6 +305,11 @@ Global $gBEErst = 0, $gBEZweit = 0, $gBEZeit = 0, $gBEOffen = 0, $gBEScan = 0, $
 ; b, e und diese Taste an Medical Office, sonst wird der Brief eingefuegt; Zeitpunkt des zurueckgehaltenen e (0 = keins)
 Const $defBENachPause = 500
 Global $gBENachPause = $defBENachPause, $gBEZweitOffen = 0, $gBEScan2 = 0
+; 26.11.26: weitere Zweierfolgen mit derselben Zeitlogik (Zeit, VorPause, NachPause aus [BriefEinfuegen]): m, ae =
+; letzten Medikamentenplan aendern ([MedplanAendern] Folge=). Je Folge: Tastencode erster, zweiter Buchstabe, Aufgabe;
+; $gBEErst/$gBEZweit/$gBEAufgabe gelten fuer die gerade begonnene
+Const $defMAFolge = "m" & ChrW(0xE4), $defMAFilter = 3, $defMAWarten = 10000
+Global $gFolgen[0][3], $gBEAufgabe = "BriefEinfuegen"
 ; letzter echter Tastendruck (ausser Strg, Alt, Umsch): b zaehlt nur nach [BriefEinfuegen] VorPause= ms Ruhe, damit
 ; ein b, e mitten im fluessigen Tippen den Brief nicht einfuegt
 Global $gTasteZeit = 0
@@ -451,8 +459,8 @@ While 1
 	; b, e und danach Ruhe: jetzt den Brief einfuegen
 	If $gBEZweitOffen And TimerDiff($gBEZweitOffen) > $gBENachPause Then
 		$gBEZweitOffen = 0
-		If $gLaeuft <> "" Then $gBesetzt = "BriefEinfuegen"
-		$gAufgabe = "BriefEinfuegen"
+		If $gLaeuft <> "" Then $gBesetzt = $gBEAufgabe
+		$gAufgabe = $gBEAufgabe
 	EndIf
 	; Tastensperre nie ueber das Ende der Aufgabe hinaus
 	If $gTastenSperre And $gLaeuft = "" And $gAufgabe = "" Then $gTastenSperre = False
@@ -599,8 +607,8 @@ Func TastenHook($nCode, $wParam, $lParam)
 						$gBEZweitOffen = TimerInit()
 						Return 1
 					EndIf
-					If $gLaeuft <> "" Then $gBesetzt = "BriefEinfuegen"
-					$gAufgabe = "BriefEinfuegen"
+					If $gLaeuft <> "" Then $gBesetzt = $gBEAufgabe
+					$gAufgabe = $gBEAufgabe
 					Return 1
 				EndIf
 				BENachliefern()
@@ -608,7 +616,7 @@ Func TastenHook($nCode, $wParam, $lParam)
 				DllCall("user32.dll", "none", "keybd_event", "byte", $vk, "byte", $kb.scanCode, "dword", BitAND($kb.flags, 1), "ulong_ptr", $Kennung)
 				Return 1
 			EndIf
-			If $vk = $gBEErst And $gBEZeit > 0 And $ruhe >= $gBEVorPause And $gLaeuft = "" And $gAufgabe = "" And OhneModifier() And KarteiFokus() Then
+			If FolgeBeginn($vk) And $gBEZeit > 0 And $ruhe >= $gBEVorPause And $gLaeuft = "" And $gAufgabe = "" And OhneModifier() And KarteiFokus() Then
 				If Not StringInStr($gUnten, "," & $vk & ",") Then $gUnten &= "," & $vk & ","
 				$gBEScan = $kb.scanCode
 				$gBEOffen = TimerInit()
@@ -1351,6 +1359,7 @@ Func Ausfuehren($aufgabe)
 	If StringLeft($aufgabe, 8) = "Katalog:" Then Return KatalogTaste(StringTrimLeft($aufgabe, 8))
 	If $aufgabe = "Diagnosesuche" Then Return Diagnosesuche()
 	If $aufgabe = "BriefEinfuegen" Then Return BriefEinfuegen()
+	If $aufgabe = "MedplanAendern" Then Return MedplanAendern()
 	If StringLeft($aufgabe, 4) = "BMP:" Then Return BmpErzeugen(StringTrimLeft($aufgabe, 4))
 	Local $teil = StringSplit($aufgabe, ":", 2)
 	If UBound($teil) = 1 Then Return Reiter($aufgabe)
@@ -1483,6 +1492,41 @@ Func KarteiFokus()
 	If BitAND(DllStructGetData($gti, "flags"), 1) Then Return False
 	Local $f = DllStructGetData($gti, "hwndFocus")
 	Return $f <> 0 And KarteiGrid($f)
+EndFunc
+
+; beginnt mit $vk eine der Zweierfolgen (b, e; m, ae)? Dann gelten $gBEErst, $gBEZweit und $gBEAufgabe fuer sie
+; (im Hook, muss schnell sein)
+Func FolgeBeginn($vk)
+	For $i = 0 To UBound($gFolgen) - 1
+		If $vk = $gFolgen[$i][0] Then
+			$gBEErst = $gFolgen[$i][0]
+			$gBEZweit = $gFolgen[$i][1]
+			$gBEAufgabe = $gFolgen[$i][2]
+			Return True
+		EndIf
+	Next
+	Return False
+EndFunc
+
+; Zweierfolge $folge (zwei Buchstaben, auch Umlaute, ohne Umschalt) mit der Aufgabe $aufgabe eintragen; leer = aus
+Func FolgeDazu($folge, $aufgabe)
+	If StringLen($folge) <> 2 Then Return
+	Local $vk[2]
+	For $i = 0 To 1
+		Local $r = DllCall("user32.dll", "short", "VkKeyScanW", "word", AscW(StringMid($folge, $i + 1, 1)))
+		; hohes Byte = noetige Umschalttasten: nur einfache Tasten
+		If @error Or $r[0] = -1 Or BitAND($r[0], 0xFF00) Then Return
+		$vk[$i] = BitAND($r[0], 0xFF)
+	Next
+	; gleicher erster Buchstabe wie eine schon eingetragene Folge: nicht moeglich
+	For $j = 0 To UBound($gFolgen) - 1
+		If $gFolgen[$j][0] = $vk[0] Then Return
+	Next
+	Local $n = UBound($gFolgen)
+	ReDim $gFolgen[$n + 1][3]
+	$gFolgen[$n][0] = $vk[0]
+	$gFolgen[$n][1] = $vk[1]
+	$gFolgen[$n][2] = $aufgabe
 EndFunc
 
 ; das zurueckgehaltene erste Zeichen von [BriefEinfuegen] Folge (mit $beide auch das zweite) doch noch an Medical Office
@@ -1863,6 +1907,49 @@ Func MetBeginn()
 	WEnd
 	GUIDelete($g)
 	Return SetError($fehler, 0, $erg)
+EndFunc
+
+; 26.11.26: m, ae in der Liste der Karteikarte: letzten Medikamentenplan aendern. Kartei-Filter Medplan ([MedplanAendern]
+; Filter=, Vorgabe 3 wie Strg+Alt+3), Strg+Ende (neue Zeile), Pfeil hoch (juengster Dosierplan), w (aendern); ruckt die
+; Markierung bei Pfeil hoch nicht nach oben, gibt es keinen Plan. Wartet bis Warten= ms auf den Dosierplan. Waehrend des
+; Ablaufs ist die Tastatur gesperrt, Esc bricht ab.
+Func MedplanAendern()
+	Local $hWnd = WinGetHandle($MOFenster)
+	If @error Then Return Meldung("Medical Office nicht gefunden")
+	$gSucheAbbruch = False
+	$gTastenSperre = True
+	$gSucheLaeuft = True
+	HinweisStehend("Medikamentenplan aendern ... Esc bricht ab")
+	Local $ok = MedplanAendernAblauf($hWnd)
+	$gSucheLaeuft = False
+	$gTastenSperre = False
+	If $gSucheAbbruch Then
+		$gSucheAbbruch = False
+		Return Meldung("Medikamentenplan aendern abgebrochen (Esc)")
+	EndIf
+	If $ok Then HinweisWeg()
+	Return $ok
+EndFunc
+
+Func MedplanAendernAblauf($hWnd)
+	If Not FilterWahl(Int(Einst("MedplanAendern", "Filter", $defMAFilter))) Then Return False
+	Sleep(Int(Einst("Filter", "Warten", $defFilterWarten)))
+	If $gSucheAbbruch Then Return False
+	If Not Unten() Then Return False
+	Local $hGrid = KarteiListe($hWnd)
+	If Not $hGrid Then Return Meldung("Karteikarte nicht gefunden")
+	TasteEinspeisen(0x23, False, True) ; Strg+Ende: neue Zeile
+	Sleep(400)
+	Local $ok1, $ok2
+	Local $y1 = KarteiMarkiertY($hGrid, $ok1)
+	TasteEinspeisen(0x26, False) ; Pfeil hoch: letzte Zeile
+	Sleep(400)
+	Local $y2 = KarteiMarkiertY($hGrid, $ok2)
+	If $gSucheAbbruch Then Return False
+	If Not ($ok2 And (Not $ok1 Or $y2 < $y1 - 3)) Then Return Meldung("Kein Medikamentenplan in der Karteikarte gefunden")
+	TasteEinspeisen(0x57, False) ; w: Medplan aendern
+	If Not FensterDerKlasse($PlanKlasse, Int(Einst("MedplanAendern", "Warten", $defMAWarten))) Then Return $gSucheAbbruch ? False : Meldung("Dosierplan ging nicht auf")
+	Return True
 EndFunc
 
 ; Strg+Alt+M, P bzw. K: Metformin-Steigerungsplan. Kartei-Filter Medplan ([Metformin] Filter=, Vorgabe 3 wie
@@ -3234,13 +3321,17 @@ Func AufrufeLaden()
 	$gTastenProtokoll = (Einst("Allgemein", "TastenProtokoll", "0") = "1")
 	; Brief einfuegen: zwei Buchstaben a-z, sonst aus
 	Local $beFolge = StringLower(StringStripWS(Einst("BriefEinfuegen", "Folge", $defBEFolge), 8))
-	$gBEZeit = StringRegExp($beFolge, "^[a-z]{2}$") ? Int(Einst("BriefEinfuegen", "Zeit", $defBEZeit)) : 0
+	$gBEZeit = Int(Einst("BriefEinfuegen", "Zeit", $defBEZeit))
 	$gBEVorPause = Int(Einst("BriefEinfuegen", "VorPause", $defBEVorPause))
 	$gBENachPause = Int(Einst("BriefEinfuegen", "NachPause", $defBENachPause))
-	If $gBEZeit > 0 Then
-		$gBEErst = Asc(StringUpper(StringLeft($beFolge, 1)))
-		$gBEZweit = Asc(StringUpper(StringRight($beFolge, 1)))
-	EndIf
+	; Zweierfolgen: b, e Brief einfuegen; m, ae letzten Medikamentenplan aendern
+	ReDim $gFolgen[0][3]
+	If StringRegExp($beFolge, "^[a-z]{2}$") Then FolgeDazu($beFolge, "BriefEinfuegen")
+	Local $maFolge = StringStripWS(Einst("MedplanAendern", "Folge", $defMAFolge), 8)
+	; ae aus einer UTF-8-INI liest IniRead als zwei ANSI-Zeichen ("A~" + Waehrungszeichen): zurueckwandeln
+	If StringInStr($maFolge, ChrW(0xC3)) Then $maFolge = BinaryToString(StringToBinary($maFolge, 1), 4)
+	FolgeDazu(StringLower($maFolge), "MedplanAendern")
+	If UBound($gFolgen) = 0 Then $gBEZeit = 0
 	If $gAufrufProtokoll Then Protokoll("MOReiter gestartet (" & @ScriptFullPath & ", Stand " & Stand() & "), " & $n & " Aufrufe eingerichtet")
 EndFunc
 

@@ -93,6 +93,11 @@ b, e               schnell nacheinander (innerhalb 0,6 s) in der Liste der Karte
                     Folgt auf b, e innerhalb einer halben Sekunde noch eine Taste (z.B. das w des Autotexts
                     "bew"), gehen alle drei unverändert an Medical Office; eingefügt wird erst nach dieser Pause.
                     Denselben Brief ein zweites Mal einzufügen geht nur nach Rückfrage (per Maus zu beantworten)
+m, ä                schnell nacheinander in der Liste der Karteikarte: letzten Medikamentenplan ändern.
+                    Filter Medplan (wie Strg+Alt+3), Strg+Ende (neue Zeile), Pfeil hoch (jüngster Dosierplan),
+                    w (ändern). Gibt es keinen Plan, meldet MOReiter das. Zeiten wie bei b, e (das m zählt nur
+                    nach einer halben Sekunde Ruhe; folgt auf m, ä noch eine Taste, geht alles wie getippt an
+                    Medical Office); Tastatur während des Ablaufs gesperrt, Esc bricht ab
 Strg+Alt+Ü          Medikationsplan (bundeseinheitlicher Medikationsplan) als XML-Datei nach P:\BMP, wie vom
                     BMP-Scanner, um die Medikamente dann in Medical Office im Dosierplan mit Strg+L zu übernehmen
                     (Barcodescanner „Dateiauswahl“, s. BMP-Einstellung-MO.ps1): in der Karteikarte aus
@@ -501,6 +506,8 @@ gilt der eingebaute Wert. Alle drei haben denselben Aufbau; Kalibrieren schreibt
                    weitere Taste nach dem zweiten (sonst wie getippt, z.B. "bew"; 0 = sofort); Kuerzel=qea der
                    Vorlage; Warten=10000 ms auf das Brieffenster, Pause=500 ms vor und nach dem Einfügen;
                    Fenster=TDocumentForm Klasse des Brieffensters (sonst eins mit Textfeld TWPRichText)
+[MedplanAendern]   Folge=mä (zwei Buchstaben, leer = aus; Zeit, VorPause, NachPause aus [BriefEinfuegen]),
+                   Filter=3 Nummer des Kartei-Filters Medplan, Warten=10000 ms auf den Dosierplan
 
 
 Hinweis: AutoIt-Skript, Quelltext MOReiter.au3 (https://github.com/libelle17/MOReiter, GPL-3.0); kompilieren

@@ -28,6 +28,8 @@ Bedienung, ganz ohne Datenbankzugriff:
   dann vier Wochenstufen mit Datum, „(nach dem Essen)“ und Grund, Zeilen 2–4 als Fremdverordnung; im Medikamentenkatalog klappt Alt+W
   „Alle Wirkstärken“ auf; dort außerdem Alt+F Favoriten, Alt+L Alle, Alt+M Meistgenutzt, Alt+R „nur rabattierte
   Präparate anzeigen“ ein/aus, Alt+S Schließen, Alt+P Pfeil an „<Alle Produkte>“, Strg+F ins Suchfeld, Alt+Umsch+M erster Listeneintrag,
+- letzten Medikamentenplan ändern: m, ä schnell nacheinander in der Karteikarte wählt den Filter Medplan, springt auf
+  den jüngsten Dosierplan und öffnet ihn mit w zum Ändern (Tastatur währenddessen gesperrt, Esc bricht ab),
 - **Medikationsplan übernehmen aus Dateien:** Strg+Alt+Ü auf PDFs oder Bildern (Scan, Fax, aus der ePA gespeichert),
   auf denen im FreeCommander oder Windows-Explorer der Tastaturcursor sitzt (blau markiert; auch mehrere markierte
   Dateien), liest den Data-Matrix-Code des bundeseinheitlichen Medikationsplans und legt das XML wie ein
