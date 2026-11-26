@@ -193,6 +193,13 @@ Landet Alt+Tab auf dem (gesperrten, unsichtbar darunterliegenden) Fenster, dem d
 MEDIKAMENTENKATALOG
 ----------------------------------------------------------------------------------------------------
 Alt+W      Klappliste "Alle Wirkstärken" aufklappen (dann wählt z.B. "7" die erste Stärke mit 7)
+Alt+F      Favoriten
+Alt+L      Alle
+Alt+M      Meistgenutzt
+Alt+R      Kästchen "nur rabattierte Präparate anzeigen" ein- bzw. ausschalten
+Alt+S      Schließen
+Strg+F     ins Feld "Suchbegriff eintragen" (alter Begriff markiert, Tippen ersetzt ihn)
+Alt+Umsch+M  ersten Eintrag der Liste markieren
 
 
 KALIBRIEREN (nur nötig, wenn ein Klick daneben geht)

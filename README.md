@@ -26,7 +26,8 @@ Bedienung, ganz ohne Datenbankzugriff:
   Alt+Tab auf dem gesperrten Fenster unter dem Editor, holt MOReiter den Editor wieder nach vorn,
 - Metformin-Steigerungsplan im Dosierplan: Strg+Alt+M, dann P (privat) bzw. K (Kasse) – fragt den Therapiebeginn ab,
   dann vier Wochenstufen mit Datum, „(nach dem Essen)“ und Grund, Zeilen 2–4 als Fremdverordnung; im Medikamentenkatalog klappt Alt+W
-  „Alle Wirkstärken“ auf,
+  „Alle Wirkstärken“ auf; dort außerdem Alt+F Favoriten, Alt+L Alle, Alt+M Meistgenutzt, Alt+R „nur rabattierte
+  Präparate anzeigen“ ein/aus, Alt+S Schließen, Strg+F ins Suchfeld, Alt+Umsch+M erster Listeneintrag,
 - **Medikationsplan übernehmen aus Dateien:** Strg+Alt+Ü auf PDFs oder Bildern (Scan, Fax, aus der ePA gespeichert),
   auf denen im FreeCommander oder Windows-Explorer der Tastaturcursor sitzt (blau markiert; auch mehrere markierte
   Dateien), liest den Data-Matrix-Code des bundeseinheitlichen Medikationsplans und legt das XML wie ein

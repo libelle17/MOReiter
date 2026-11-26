@@ -134,7 +134,9 @@
 ;            Strg+Alt+Ue       Medikationsplan (BMP) als XML nach P:\BMP (BmpErzeugen, BmpLesen.exe): in der Karteikarte aus
 ;                              dem Dokument der markierten Zeile (Texterkennung Datum/Uhrzeit, Dateien aus medoff),
 ;                              im FreeCommander (Alt+Einfg) bzw. Explorer aus den markierten Dateien
-;            Alt+W             im Medikamentenkatalog: Klappliste "Alle Wirkstaerken" aufklappen
+;            Alt+W             im Medikamentenkatalog: Klappliste "Alle Wirkstaerken" aufklappen; dort ausserdem
+;                              Alt+F Favoriten, Alt+L Alle, Alt+M Meistgenutzt, Alt+R "nur rabattierte" um-
+;                              schalten, Alt+S Schliessen, Strg+F ins Suchfeld, Alt+Umsch+M erster Listeneintrag
 ;            Strg+Alt+Umsch+D  Liste der Controls im aktiven Fenster (Klasse, Nummer, Text, Lage) in die
 ;                              Zwischenablage und nach %APPDATA%\MOReiter\Fenster.txt, zum Einrichten neuer Tasten
 ;            Beenden ueber das Tray-Menue (kein Strg+Alt+Q, das waere AltGr+Q = @)
@@ -709,6 +711,24 @@ Func HookAufgabe($vk)
 	If $vk = 0x44 And AltAllein() And Not Gedrueckt(0x10) And EditorAktiv() Then Return "Editor:Datei"
 	; im Medikamentenkatalog: Alt+W klappt "Alle Wirkstaerken" auf
 	If $vk = 0x57 And AltAllein() And Not Gedrueckt(0x10) And KatalogAktiv() Then Return "Katalog:Wirkstaerke"
+	; 26.11.26: dort ausserdem Alt+F/L/M Favoriten/Alle/Meistgenutzt, Alt+R "nur rabattierte", Alt+S Schliessen,
+	; Alt+Umsch+M erster Eintrag der Liste, Strg+F Suchfeld
+	If AltAllein() And KatalogAktiv() Then
+		If Gedrueckt(0x10) Then Return ($vk = 0x4D) ? "Katalog:Erster" : ""
+		Switch $vk
+			Case 0x46
+				Return "Katalog:Favoriten"
+			Case 0x4C
+				Return "Katalog:Alle"
+			Case 0x4D
+				Return "Katalog:Meistgenutzt"
+			Case 0x52
+				Return "Katalog:Rabattiert"
+			Case 0x53
+				Return "Katalog:Schliessen"
+		EndSwitch
+	EndIf
+	If $vk = 0x46 And StrgAllein() And Not Gedrueckt(0x10) And KatalogAktiv() Then Return "Katalog:Suchen"
 	; Strg[+Umsch]+Buchstabe aus [Aufrufe], nur in Medical Office und nicht in einem Eingabefeld
 	If UBound($gAufrufe) > 0 And StrgAllein() Then
 		For $i = 0 To UBound($gAufrufe) - 1
@@ -1327,6 +1347,7 @@ Func Ausfuehren($aufgabe)
 		Return BMIAnzeigen()
 	EndIf
 	If $aufgabe = "Katalog:Wirkstaerke" Then Return KatalogWirkstaerke()
+	If StringLeft($aufgabe, 8) = "Katalog:" Then Return KatalogTaste(StringTrimLeft($aufgabe, 8))
 	If $aufgabe = "Diagnosesuche" Then Return Diagnosesuche()
 	If $aufgabe = "BriefEinfuegen" Then Return BriefEinfuegen()
 	If StringLeft($aufgabe, 4) = "BMP:" Then Return BmpErzeugen(StringTrimLeft($aufgabe, 4))
@@ -1634,6 +1655,66 @@ Func KatalogWirkstaerke()
 	ControlFocus($hKat, "", $h)
 	; 0x14F = CB_SHOWDROPDOWN
 	_SendMessage($h, 0x14F, 1, 0)
+	Return True
+EndFunc
+
+; sichtbarer Knopf der Klasse $klasse im Medikamentenkatalog mit der Beschriftung $text (ohne &), sonst 0;
+; nach der Beschriftung, weil die Nummern (INSTANCE) mit den Reitern und Einstellungen wechseln
+Func KatalogKnopf($hKat, $klasse, $text)
+	For $i = 1 To 40
+		Local $h = ControlGetHandle($hKat, "", "[CLASS:" & $klasse & "; INSTANCE:" & $i & "]")
+		If @error Then ExitLoop
+		If _WinAPI_IsWindowVisible($h) And StringReplace(_WinAPI_GetWindowText($h), "&", "") = $text Then Return $h
+	Next
+	Return 0
+EndFunc
+
+; 26.11.26: Tasten im Medikamentenkatalog: Favoriten, Alle, Meistgenutzt (Knoepfe oben), Rabattiert (Kaestchen "nur
+; rabattierte Praeparate anzeigen" umschalten), Schliessen, Suchen (Strg+F: ins Suchfeld, Inhalt markiert),
+; Erster (ersten Eintrag der Liste markieren)
+Func KatalogTaste($was)
+	Local $hKat = _WinAPI_GetForegroundWindow()
+	If _WinAPI_GetClassName($hKat) <> $KatalogKlasse Then Return False
+	; Alt allein losgelassen sprange sonst in die Menueleiste
+	AltMaskieren()
+	Local $h
+	Switch $was
+		Case "Favoriten", "Alle", "Meistgenutzt"
+			$h = KatalogKnopf($hKat, "TNewBitBtn", $was)
+			If Not $h Then Return Meldung("Knopf """ & $was & """ nicht gefunden")
+			ControlClick($hKat, "", $h)
+		Case "Schliessen"
+			$h = KatalogKnopf($hKat, "TmoButton", "Schlie" & ChrW(0xDF) & "en")
+			If Not $h Then Return Meldung("Knopf ""Schliessen"" nicht gefunden")
+			ControlClick($hKat, "", $h)
+		Case "Rabattiert"
+			Local $vorher = KatalogRabattiert($hKat, $h)
+			If $vorher < 0 Then Return Meldung("Kaestchen ""nur rabattierte"" nicht zu sehen")
+			ControlClick($hKat, "", $h, "left", 1, 8, 8)
+		Case "Suchen"
+			$h = ControlGetHandle($hKat, "", "[CLASS:TAlnumEdit; INSTANCE:1]")
+			If @error Or Not _WinAPI_IsWindowVisible($h) Then Return Meldung("Suchfeld im Medikamentenkatalog nicht gefunden")
+			ControlFocus($hKat, "", $h)
+			; 0xB1 = EM_SETSEL: alles markieren, damit Tippen den alten Suchbegriff ersetzt
+			_SendMessage($h, 0xB1, 0, -1)
+		Case "Erster"
+			$h = 0
+			For $i = 1 To 5
+				Local $l = ControlGetHandle($hKat, "", "[CLASS:TMOListView; INSTANCE:" & $i & "]")
+				If @error Then ExitLoop
+				If _WinAPI_IsWindowVisible($l) Then
+					$h = $l
+					ExitLoop
+				EndIf
+			Next
+			If Not $h Then Return Meldung("Liste im Medikamentenkatalog nicht gefunden")
+			If ControlListView($hKat, "", $h, "GetItemCount") < 1 Then Return Meldung("Liste ist leer")
+			ControlFocus($hKat, "", $h)
+			; Pos1 markiert den ersten Eintrag samt Tastaturcursor wie von Hand; vorher Alt und Umschalt los,
+			; sonst kaeme Umsch+Pos1 (Auswahl erweitern) an
+			If Not ModifierLos() Then Return Meldung("Alt und Umschalt bitte loslassen")
+			TasteEinspeisen(0x24, False)
+	EndSwitch
 	Return True
 EndFunc
 
